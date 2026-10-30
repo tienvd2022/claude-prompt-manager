@@ -307,6 +307,7 @@ dialog .job { margin: 0; }
 .keybar-edit li { display: flex; align-items: center; gap: 6px; }
 .keybar-edit label.inline { flex: 1; }
 .keybar-edit .key-label { display: inline-block; min-width: 40px; text-align: center; }
+.text-view { margin: 0; max-height: 70vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 Menlo, Monaco, Consolas, monospace; -webkit-user-select: text; user-select: text; }
 .queue-item { display: flex; align-items: flex-start; gap: 4px; }
 .queue-item .queue-text { flex: 1; min-width: 0; }
 .keys button.armed { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }

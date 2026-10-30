@@ -14,10 +14,13 @@ const NAME_RE = /^[A-Za-z0-9_-]{1,48}$/;
 // để hàng đợi prompt biết lúc nào Claude xong việc. --settings chỉ cộng thêm, không đè cấu hình của anh.
 const shq = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
 const HOOKS = `--settings ${shq(path.join(__dirname, 'claude-hooks.json'))}`;
+// Tắt màn hình phụ (fullscreen) của Claude để nội dung trôi vào lịch sử tmux/xterm: cuộn lên xem lại
+// và xem/copy dạng chữ được. Ở chế độ fullscreen, tmux không giữ được dòng nào đã trôi qua.
+const CLAUDE = 'CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 claude';
 const COMMANDS = {
-  claude: `claude --permission-mode auto ${HOOKS}`,
+  claude: `${CLAUDE} --permission-mode auto ${HOOKS}`,
   // Chỉ mở khi bấm giữ nút Claude: bỏ qua mọi bước hỏi quyền.
-  'claude-bypass': `claude --dangerously-skip-permissions ${HOOKS}`,
+  'claude-bypass': `${CLAUDE} --dangerously-skip-permissions ${HOOKS}`,
   shell: null,
 };
 const SHELLS = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'ksh', 'login', '-bash', '-zsh']);
@@ -113,9 +116,10 @@ async function kill(name) {
 }
 
 // Lấy phần lịch sử đã cuộn khỏi màn hình, để trình duyệt kéo lên xem được.
-async function history(name, lines = 3000) {
+// plain=true: lấy cả màn hình hiện tại, không kèm mã màu (để xem/copy dạng chữ).
+async function history(name, lines = 3000, { plain = false } = {}) {
   try {
-    const out = await tmux(['capture-pane', '-p', '-e', '-J', '-S', `-${lines}`, '-E', '-1', '-t', `=${name}:`]);
+    const out = await tmux(['capture-pane', '-p', ...(plain ? [] : ['-e', '-E', '-1']), '-J', '-S', `-${lines}`, '-t', `=${name}:`]);
     return out.replace(/\n+$/, '');
   } catch {
     return '';

@@ -575,6 +575,7 @@ const BAR_BUTTONS = {
   enter: keyBtn('⏎', 'Enter', 'enter'),
   history: { label: '🕘', title: 'Lịch sử prompt', run: () => showHistory() },
   queue: { label: '📋', title: 'Hàng đợi prompt', run: () => showQueue() },
+  text: { label: '📄', title: 'Xem/copy nội dung dạng chữ', run: () => showText() },
   'shift-tab': keyBtn('⇧Tab', 'Shift+Tab (đổi chế độ Claude)', 'shift-tab'),
   'font-down': { label: 'A−', title: 'Chữ nhỏ hơn', run: () => setFont(fontSize - 1) },
   'font-up': { label: 'A+', title: 'Chữ to hơn', run: () => setFont(fontSize + 1) },
@@ -708,6 +709,46 @@ function showHistory() {
 $('#history-clear').addEventListener('click', async () => {
   $('#dlg-history').close();
   if (await confirmDialog('Xóa toàn bộ lịch sử prompt trên trình duyệt này?', 'Xóa')) store.set('cpm.promptHistory', []);
+});
+
+// Xem nội dung phiên dạng chữ thường: chọn/copy bằng thao tác bình thường của trình duyệt,
+// vì chọn chữ trong terminal trên điện thoại gần như không dùng được.
+const dlgText = $('#dlg-text');
+const textBody = $('#text-body');
+
+async function showText() {
+  if (!active) return toast('Mở một phiên trước (bấm ＋)', 'error');
+  textBody.textContent = 'Đang tải…';
+  dlgText.showModal();
+  try {
+    const { text } = await api('GET', `/api/sessions/${encodeURIComponent(active)}/text`);
+    textBody.textContent = text.replace(/\s+$/, '') || '(trống)';
+    textBody.scrollTop = textBody.scrollHeight;
+  } catch (err) {
+    textBody.textContent = err.message;
+  }
+}
+
+async function copyText(text) {
+  // navigator.clipboard chỉ có trên HTTPS/localhost; mở qua IP LAN thì dùng cách cũ.
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = el('textarea', { readonly: true, style: 'position:fixed;opacity:0' });
+    ta.value = text;
+    dlgText.append(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  }
+}
+
+$('#text-copy').addEventListener('click', async () => {
+  const sel = String(getSelection());
+  const ok = await copyText(sel || textBody.textContent);
+  toast(ok ? (sel ? 'Đã copy đoạn đã chọn' : 'Đã copy hết') : 'Trình duyệt chặn copy, hãy chọn chữ rồi copy tay', ok ? undefined : 'error');
 });
 
 // Hàng đợi prompt của phiên đang mở: nằm trên server, tự gửi khi hook báo Claude xong lượt.

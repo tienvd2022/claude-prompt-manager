@@ -231,6 +231,10 @@ route('GET', '/api/projects/:p/sessions', async (req, res, p) => {
 async function sessionOr404(name) {
   if (!(await tmux.exists(name))) throw projects.httpError(404, 'Không có phiên này');
 }
+route('GET', '/api/sessions/:name/text', async (req, res, name) => {
+  await sessionOr404(name);
+  sendJson(res, 200, { text: await tmux.history(name, 10000, { plain: true }) });
+});
 route('GET', '/api/sessions/:name/queue', async (req, res, name) => {
   await sessionOr404(name);
   sendJson(res, 200, { items: queue.get(name) });
