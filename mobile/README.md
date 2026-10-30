@@ -5,7 +5,7 @@ App Android/iOS cho Claude Prompt Manager. Mở app → nhập địa chỉ serv
 - App là WebView chạy chính bản web của server, nên **sửa web và deploy server là app có luôn**, không cần build lại. Chỉ build lại khi sửa code trong `mobile/`.
 - Lưu nhiều server, mở lại server dùng lần trước. Đổi server: nút ⇄ ở trang Dự án hoặc nút "Đổi server" ở trang đăng nhập. Đặt tên server lúc kết nối (không bắt buộc, để trống thì lấy tên miền). Sửa tên/địa chỉ server đã lưu: nút ✎ hoặc nhấn giữ. Xóa: nút ✕.
 - Tải file/thư mục: Android lưu vào thư mục **Download**; iOS mở bảng chia sẻ (Lưu vào Tệp…), file cũng nằm trong app Tệp → Trên iPhone → Prompt Manager.
-- Upload file, đính kèm ảnh, dán ảnh, giọng nói (bàn phím) dùng như trên trình duyệt điện thoại.
+- Upload file, đính kèm ảnh, dán ảnh, giọng nói (bàn phím) dùng như trên trình duyệt điện thoại. Bảng chọn file trên Android chỉ có chọn file, không kèm chụp camera (manifest khai báo quyền CAMERA nhưng không bao giờ xin, để react-native-webview bỏ lựa chọn chụp).
 - Link ra ngoài server mở bằng trình duyệt của máy. Android: nút Back quay lại trong trang.
 - Server `http://` (mạng LAN, `COOKIE_SECURE=0`) cũng kết nối được.
 

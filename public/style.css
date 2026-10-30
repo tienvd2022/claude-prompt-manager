@@ -376,8 +376,24 @@ dialog label.inline input { width: auto; }
 .entry-actions button { padding: 10px; }
 .ssh { display: grid; gap: 6px; border-top: 1px solid var(--border); padding-top: 12px; }
 .ssh p { margin: 0; }
-#ssh-key-box { display: grid; gap: 6px; }
-#ssh-key { font: 11px/1.4 Menlo, Monaco, Consolas, monospace; resize: none; overflow-wrap: anywhere; }
+.acct-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.acct { display: grid; gap: 4px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; min-width: 0; }
+.acct-head { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.acct-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.acct-actions button { padding: 4px 10px; font-size: 13px; }
+.acct-key { display: grid; gap: 6px; }
+.acct-key textarea { font: 11px/1.4 Menlo, Monaco, Consolas, monospace; resize: none; overflow-wrap: anywhere; }
+.acct-add { display: flex; flex-wrap: wrap; gap: 6px; }
+.acct-add input { flex: 2 1 180px; min-width: 0; }
+.acct-add #acct-host { flex: 1 1 100px; }
+.seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg label { flex: 1; display: block; text-align: center; padding: 8px 4px; font-size: 13px; color: var(--text); cursor: pointer; }
+.seg label + label { border-left: 1px solid var(--border); }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label:has(input:checked) { background: var(--accent); color: var(--accent-text, #fff); }
+.pm { display: grid; gap: 10px; }
+.git-remote { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.git-remote .icon-btn { flex: none; padding: 0 6px; }
 .dlg-wide { width: min(1000px, calc(100vw - 16px)); padding: 12px; }
 .view-head { display: flex; align-items: center; gap: 8px; }
 .view-head h2 { flex: 1; }

@@ -2,6 +2,7 @@
 
 import { $, el, api, projectUrl, timeAgo, toast, showText, followJob } from './common.js';
 import { openViewer } from './viewer.js';
+import { accounts, aliasUrl, urlHost, fillAccountSelect } from './gitaccounts.js';
 
 const infoEl = $('#git-info');
 const changesEl = $('#git-changes');
@@ -13,6 +14,8 @@ const commitForm = $('#git-commit-form');
 const autoSyncBox = $('#git-autosync');
 const dlgBranch = $('#dlg-branch');
 const branchForm = $('#branch-form');
+const dlgRemote = $('#dlg-remote');
+const remoteForm = $('#remote-form');
 
 const SYNC_EVERY_MS = 10000;
 const XY_LABEL = { M: 'sửa', A: 'thêm', D: 'xóa', R: 'đổi tên', C: 'chép', U: 'xung đột', T: 'đổi loại' };
@@ -32,6 +35,7 @@ let pushTried = null; // HEAD đã thử tự push, để push lỗi thì không
 let syncNote = '';
 
 export function initGit() {
+  initRemote();
   $('#git-refresh').addEventListener('click', () => load());
   document.querySelectorAll('[data-git]').forEach((btn) => btn.addEventListener('click', () => runRemote(btn.dataset.git)));
   document.querySelectorAll('[data-gitview]').forEach((btn) => btn.addEventListener('click', () => setView(btn.dataset.gitview)));
@@ -174,7 +178,9 @@ function renderInfo(st) {
     : 'chưa có nhánh trên remote';
   infoEl.replaceChildren(...[
     el('div', { class: 'small' }, st.upstream ? el('span', { class: 'muted', text: `${st.upstream}: ` }) : null, el('span', { text: sync })),
-    el('div', { class: 'muted small ellipsis', title: st.remote || '', text: st.remote ? `origin: ${st.remote}` : 'Chưa có remote origin' }),
+    el('div', { class: 'git-remote' },
+      el('span', { class: 'muted small ellipsis', title: st.remote || '', text: st.remote ? `origin: ${st.remote}` : 'Chưa có remote origin' }),
+      el('button', { type: 'button', class: 'icon-btn small', title: st.remote ? 'Đổi remote origin' : 'Thêm remote origin', 'aria-label': 'Đổi remote origin', text: '✎', onclick: () => openRemote(st.remote || '') })),
     autoSyncBox.checked && syncNote ? el('div', { class: 'muted small', text: `Tự đồng bộ: ${syncNote}` }) : null,
   ].filter(Boolean));
 }
@@ -436,4 +442,43 @@ async function syncTick() {
   } finally {
     syncing = false;
   }
+}
+
+// ---------- Đổi remote origin (chọn tài khoản thì URL đi qua alias SSH của tài khoản đó) ----------
+
+let remoteAccounts = [];
+
+async function openRemote(url) {
+  remoteForm.url.value = url;
+  $('#remote-error').textContent = '';
+  dlgRemote.showModal();
+  try {
+    remoteAccounts = await accounts();
+  } catch {
+    remoteAccounts = [];
+  }
+  fillAccountSelect(remoteForm.account, remoteAccounts, { none: 'Theo URL', value: urlHost(url) });
+}
+
+function initRemote() {
+  remoteForm.account.addEventListener('change', () => {
+    const acc = remoteAccounts.find((a) => a.alias === remoteForm.account.value);
+    if (acc && remoteForm.url.value.trim()) remoteForm.url.value = aliasUrl(remoteForm.url.value, acc);
+  });
+  remoteForm.url.addEventListener('input', () => {
+    const host = urlHost(remoteForm.url.value);
+    remoteForm.account.value = remoteAccounts.some((a) => a.alias === host) ? host : '';
+  });
+  remoteForm.addEventListener('submit', async (e) => {
+    if (e.submitter?.value !== 'ok') return;
+    e.preventDefault();
+    try {
+      const r = await api('POST', projectUrl(project, '/git/remote'), { url: remoteForm.url.value.trim() });
+      dlgRemote.close();
+      toast(`origin: ${r.remote}`);
+      load();
+    } catch (err) {
+      $('#remote-error').textContent = err.message;
+    }
+  });
 }

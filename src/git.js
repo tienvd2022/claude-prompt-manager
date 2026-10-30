@@ -19,7 +19,6 @@ const JOB_OUTPUT = 100 * 1024;
 const JOB_TIMEOUT = 15 * 60 * 1000;
 const URL_RE = /^(?:(?:ssh|https?|git):\/\/[^\s'"`]+|[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s'"`]+)$/;
 const HASH_RE = /^[0-9a-f]{4,40}$/;
-const SSH_KEY = path.join(os.homedir(), '.ssh', 'id_ed25519');
 
 function git(cwd, args, { timeout = 30000, ok = [0], raw = false } = {}) {
   return new Promise((resolve, reject) => {
@@ -304,18 +303,21 @@ async function remoteOp(project, op) {
   throw httpError(400, 'Lệnh không hợp lệ');
 }
 
-// ---------- Cấu hình chung: tên/email commit và SSH key để clone/push ----------
+// Đổi (hoặc thêm) remote origin.
+async function setRemote(project, url) {
+  const dir = repoDir(project);
+  if (typeof url !== 'string' || !URL_RE.test(url.trim())) throw httpError(400, 'URL git không hợp lệ (dùng git@host:user/repo.git hoặc https://...)');
+  const has = await git(dir, ['remote', 'get-url', 'origin']).then(() => true, () => false);
+  await git(dir, ['remote', has ? 'set-url' : 'add', 'origin', url.trim()]);
+  return { remote: url.trim() };
+}
+
+// ---------- Cấu hình chung: tên/email commit (SSH key theo tài khoản nằm ở gitaccounts.js) ----------
 
 async function getConfig() {
   const home = os.homedir();
   const read = (key) => git(home, ['config', '--global', '--get', key]).then((s) => s.trim(), () => '');
-  let sshKey = null;
-  try {
-    sshKey = fs.readFileSync(`${SSH_KEY}.pub`, 'utf8').trim();
-  } catch {
-    // chưa có key
-  }
-  return { name: await read('user.name'), email: await read('user.email'), sshKey };
+  return { name: await read('user.name'), email: await read('user.email') };
 }
 
 async function setConfig({ name, email }) {
@@ -327,15 +329,4 @@ async function setConfig({ name, email }) {
   return getConfig();
 }
 
-function createSshKey() {
-  if (fs.existsSync(SSH_KEY)) throw httpError(409, 'Đã có SSH key');
-  fs.mkdirSync(path.dirname(SSH_KEY), { recursive: true, mode: 0o700 });
-  return new Promise((resolve, reject) => {
-    execFile('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-C', `${os.userInfo().username}@claude-prompt-manager`, '-f', SSH_KEY], (err, _out, stderr) => {
-      if (err) return reject(httpError(500, String(stderr || err.message).trim()));
-      resolve(getConfig());
-    });
-  });
-}
-
-module.exports = { status, log, show, diff, commitFiles, commitDiff, fileAt, rawAt, branches, checkout, commitAll, init, clone, remoteOp, getJob, getConfig, setConfig, createSshKey };
+module.exports = { status, log, show, diff, commitFiles, commitDiff, fileAt, rawAt, branches, checkout, commitAll, init, clone, remoteOp, setRemote, getJob, getConfig, setConfig };

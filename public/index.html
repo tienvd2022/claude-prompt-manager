@@ -16,7 +16,7 @@
       <header class="topbar">
         <strong class="brand">Dự án</strong>
         <span class="spacer"></span>
-        <button id="btn-git-settings" class="icon-btn" title="Cài đặt Git (SSH key, tên commit)" aria-label="Cài đặt Git">⚙</button>
+        <button id="btn-git-settings" class="icon-btn" title="Cài đặt Git (tài khoản SSH, tên commit)" aria-label="Cài đặt Git">⚙</button>
         <button class="icon-btn btn-switch-server" title="Đổi server" aria-label="Đổi server" hidden>⇄</button>
         <button class="icon-btn btn-logout" title="Đăng xuất" aria-label="Đăng xuất"><span class="ico ico-power"></span></button>
       </header>
@@ -177,17 +177,55 @@
   <dialog id="dlg-project">
     <form method="dialog" id="project-form">
       <h2>Dự án mới</h2>
-      <label>Clone từ git (để trống nếu tạo thư mục trống)
-        <input name="gitUrl" placeholder="git@github.com:user/repo.git" autocomplete="off" autocapitalize="none" spellcheck="false">
-      </label>
-      <label>Tên dự án (tên thư mục)
+      <div class="seg" role="radiogroup" aria-label="Kiểu dự án">
+        <label><input type="radio" name="mode" value="empty" checked> Thư mục trống</label>
+        <label><input type="radio" name="mode" value="clone"> Clone</label>
+        <label><input type="radio" name="mode" value="create"> Tạo repo mới</label>
+      </div>
+      <div id="pm-clone" class="pm" hidden>
+        <label>URL git
+          <input name="gitUrl" placeholder="git@github.com:user/repo.git" autocomplete="off" autocapitalize="none" spellcheck="false">
+        </label>
+        <label>Tài khoản SSH
+          <select name="cloneAccount"></select>
+        </label>
+      </div>
+      <div id="pm-create" class="pm" hidden>
+        <label>Tài khoản git
+          <select name="account"></select>
+        </label>
+        <label>Chủ repo (tài khoản hoặc organization)
+          <input name="owner" autocomplete="off" autocapitalize="none" spellcheck="false">
+        </label>
+        <label class="inline"><input type="checkbox" name="private" checked> Private</label>
+      </div>
+      <label>Tên dự án (tên thư mục, cũng là tên repo khi tạo mới)
         <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}" autocomplete="off" autocapitalize="none" spellcheck="false">
       </label>
+      <p id="project-note" class="muted small break"></p>
       <pre id="project-job" class="job" hidden></pre>
       <p id="project-error" class="error" role="alert"></p>
       <div class="dlg-actions">
         <button value="cancel" formnovalidate>Hủy</button>
         <button value="ok" class="primary-btn">Tạo</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-remote">
+    <form method="dialog" id="remote-form">
+      <h2>Đổi remote origin</h2>
+      <label>URL
+        <input name="url" required placeholder="git@github.com:user/repo.git" autocomplete="off" autocapitalize="none" spellcheck="false">
+      </label>
+      <label>Tài khoản SSH
+        <select name="account"></select>
+      </label>
+      <p class="muted small">Chọn tài khoản thì phần host trong URL đổi sang alias đó, vd git@github.com-tienvd2022:user/repo.git.</p>
+      <p id="remote-error" class="error" role="alert"></p>
+      <div class="dlg-actions">
+        <button value="cancel" formnovalidate>Hủy</button>
+        <button value="ok" class="primary-btn">Lưu</button>
       </div>
     </form>
   </dialog>
@@ -225,13 +263,15 @@
         <input name="email" type="email" autocomplete="off" autocapitalize="none">
       </label>
       <div class="ssh">
-        <strong>SSH key của server</strong>
-        <p class="muted small">Dùng để clone/push repo qua SSH. Thêm public key này vào GitHub → Settings → SSH keys (hoặc Deploy keys của từng repo).</p>
-        <div id="ssh-key-box" hidden>
-          <textarea id="ssh-key" name="sshKey" rows="3" readonly></textarea>
-          <button type="button" id="btn-ssh-copy">Copy</button>
+        <strong>Tài khoản git (SSH) của server</strong>
+        <p class="muted small">Đọc từ ~/.ssh/config: mỗi alias một key riêng, clone/push bằng git@&lt;alias&gt;:user/repo.git là ra đúng tài khoản. Copy public key, add vào GitHub → Settings → SSH keys của tài khoản đó.</p>
+        <ul id="git-accounts" class="acct-list"></ul>
+        <div class="acct-add">
+          <input id="acct-alias" placeholder="alias mới, vd github.com-tienvd2022" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Alias mới">
+          <input id="acct-host" value="github.com" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Host">
+          <button type="button" id="acct-add">＋ Thêm</button>
         </div>
-        <button type="button" id="btn-ssh-create" hidden>Tạo SSH key</button>
+        <p class="muted small">Thêm alias: tạo key ed25519 mới và thêm khối Host vào ~/.ssh/config (config cũ sao lưu ở config.cpm-backup, không đụng key có sẵn).</p>
       </div>
       <p id="git-settings-error" class="error" role="alert"></p>
       <div class="dlg-actions">

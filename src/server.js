@@ -18,6 +18,7 @@ const auth = require('./auth');
 const browser = require('./browser');
 const files = require('./files');
 const git = require('./git');
+const gitAccounts = require('./gitaccounts');
 const projects = require('./projects');
 const queue = require('./queue');
 const tmux = require('./tmux');
@@ -213,6 +214,12 @@ async function projectsWithSessions() {
 route('GET', '/api/projects', async (req, res) => sendJson(res, 200, { projects: await projectsWithSessions(), root: projects.PROJECTS_DIR }));
 route('POST', '/api/projects', async (req, res) => {
   const body = await readJson(req);
+  if (body.repo) {
+    // Tạo repo mới trên GitHub qua tài khoản (alias SSH) đã chọn rồi clone về.
+    projects.checkNewName(body.name);
+    const url = await gitAccounts.createRepo({ ...body.repo, name: body.name });
+    return sendJson(res, 202, { job: git.clone(body.name, url), url });
+  }
   if (body.gitUrl) return sendJson(res, 202, { job: git.clone(body.name, body.gitUrl) });
   return sendJson(res, 201, projects.create(body.name));
 });
@@ -377,12 +384,17 @@ route('POST', '/api/projects/:p/git/commit', async (req, res, p) => {
   const body = await readJson(req);
   sendJson(res, 200, { output: await git.commitAll(p, body.message) });
 });
+route('POST', '/api/projects/:p/git/remote', async (req, res, p) => sendJson(res, 200, await git.setRemote(p, (await readJson(req)).url)));
 route('POST', '/api/projects/:p/git/:op', async (req, res, p, op) => sendJson(res, 202, { job: await git.remoteOp(p, op) }));
 route('GET', '/api/jobs/:id', async (req, res, id) => sendJson(res, 200, { job: git.getJob(id) }));
 
 route('GET', '/api/git/config', async (req, res) => sendJson(res, 200, await git.getConfig()));
 route('POST', '/api/git/config', async (req, res) => sendJson(res, 200, await git.setConfig(await readJson(req))));
-route('POST', '/api/git/ssh-key', async (req, res) => sendJson(res, 201, await git.createSshKey()));
+route('GET', '/api/git/accounts', async (req, res) => sendJson(res, 200, { accounts: gitAccounts.list() }));
+route('POST', '/api/git/accounts', async (req, res) => sendJson(res, 201, await gitAccounts.add(await readJson(req))));
+route('GET', '/api/git/accounts/:alias/check', async (req, res, alias) => sendJson(res, 200, await gitAccounts.check(alias)));
+route('POST', '/api/git/accounts/:alias/key', async (req, res, alias) => sendJson(res, 201, await gitAccounts.createKey(alias)));
+route('POST', '/api/git/tokens', async (req, res) => sendJson(res, 200, await gitAccounts.saveToken(await readJson(req))));
 
 async function handleApi(req, res, url) {
   for (const r of routes) {
