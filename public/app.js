@@ -4,7 +4,9 @@
 
 import { $, el, api, store, projectUrl, timeAgo, toast, confirmDialog, inputDialog, followJob, isTouch, isNarrow, nativeApp, copyText } from './common.js';
 import { attachTouch } from './touchterm.js';
-import { initFiles, setFilesProject, load as loadFiles } from './files.js';
+import { initFiles, setFilesProject, load as loadFiles, download } from './files.js';
+import { initPreview, setPreviewProject, openPreview, togglePreview } from './preview.js';
+import { initSketch, openSketch } from './sketch.js';
 import { initGit, setGitProject, load as loadGit } from './gitpanel.js';
 import { openBrowser } from './browserview.js';
 import { accounts as gitAccounts, checkAccount, aliasUrl, urlHost, fillAccountSelect, whoText, renderAccounts, initGitAccounts } from './gitaccounts.js';
@@ -366,6 +368,7 @@ async function openProject(name) {
 
   setFilesProject(name);
   setGitProject(name);
+  setPreviewProject(name);
   if (!isNarrow()) document.body.classList.add('sidebar-open');
   showPanel(panel);
   fitViewport();
@@ -383,6 +386,7 @@ async function openProject(name) {
 function closeProject() {
   clearInterval(refreshTimer);
   setGitProject(null);
+  setPreviewProject(null);
   for (const tab of [...tabs.values()]) disposeTab(tab);
   tabs.clear();
   active = null;
@@ -772,6 +776,7 @@ const BAR_BUTTONS = {
   queue: { label: '📋', title: 'Hàng đợi prompt', run: () => showQueue() },
   text: { label: '📄', title: 'Xem/copy nội dung dạng chữ', run: () => showText() },
   browser: { label: '🌐', title: 'Xem trình duyệt của phiên (Claude test web ở đây)', run: () => showBrowser() },
+  preview: { label: '👁', title: 'Khung Preview (design, slide Claude làm)', run: () => togglePreview() },
   'shift-tab': keyBtn('⇧Tab', 'Shift+Tab (đổi chế độ Claude)', 'shift-tab'),
   'font-down': { label: 'A−', title: 'Chữ nhỏ hơn', run: () => setFont(fontSize - 1) },
   'font-up': { label: 'A+', title: 'Chữ to hơn', run: () => setFont(fontSize + 1) },
@@ -1150,6 +1155,12 @@ function insertPath(rel) {
   promptInput.focus();
 }
 
+// Thêm một đoạn chữ vào cuối ô prompt (góp ý từ khung Preview, mô tả hình vẽ).
+function appendPrompt(text) {
+  const v = promptInput.value.replace(/\s+$/, '');
+  setPrompt(`${v}${v ? '\n' : ''}${text}`);
+}
+
 // Ảnh dán hoặc đính kèm: upload vào .cpm/paste của dự án rồi chèn @đường-dẫn vào prompt.
 async function attachImages(list) {
   const images = list.filter((f) => f.type.startsWith('image/'));
@@ -1184,6 +1195,7 @@ promptImage.addEventListener('change', () => {
   attachImages([...promptImage.files]);
   promptImage.value = '';
 });
+$('#prompt-sketch').addEventListener('click', () => openSketch());
 
 // ---------- Bố cục ----------
 
@@ -1234,7 +1246,27 @@ document.addEventListener('visibilitychange', () => {
 
 // ---------- Khởi động ----------
 
-initFiles({ insertPath });
+initFiles({ insertPath, openPreview });
+initSketch({
+  send: async (file, text) => {
+    await attachImages([file]);
+    if (text) appendPrompt(text);
+    if (!isTouch) promptInput.focus();
+  },
+});
+initPreview({
+  insertText: appendPrompt,
+  sendText: (text) => {
+    appendPrompt(text);
+    promptForm.requestSubmit();
+  },
+  download: (path) => download(path),
+  sketch: openSketch,
+  onBadge: (on) => {
+    if (barEls.preview) barEls.preview.textContent = on ? '👁•' : '👁';
+  },
+  onLayout: () => requestAnimationFrame(() => tabs.get(active) && safeFit(tabs.get(active))),
+});
 initGit();
 fitViewport();
 route();

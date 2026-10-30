@@ -123,11 +123,32 @@
         </aside>
 
         <main class="main">
-          <div id="empty" class="empty">
-            <p>Chưa mở phiên nào.</p>
-            <p>Bấm <b>＋</b> để mở phiên Claude, hoặc chọn phiên trong danh sách.</p>
+          <div class="stage">
+            <div id="empty" class="empty">
+              <p>Chưa mở phiên nào.</p>
+              <p>Bấm <b>＋</b> để mở phiên Claude, hoặc chọn phiên trong danh sách.</p>
+            </div>
+            <div id="terminals" class="terminals"></div>
+            <!-- Khung Preview: design/slide Claude viết vào .cpm/preview, xem preview.js -->
+            <section id="preview" class="preview" hidden>
+              <div id="pv-resize" class="pv-resize" title="Kéo để đổi độ rộng"></div>
+              <div class="pv-bar">
+                <select id="pv-file" aria-label="File đang xem"></select>
+                <button type="button" id="pv-reload" class="icon-btn" title="Tải lại">⟳</button>
+                <button type="button" id="pv-device" class="icon-btn" title="Xem khổ điện thoại">📱</button>
+                <button type="button" id="pv-inspect" class="icon-btn" title="Góp ý: bấm vào phần tử trên trang">🎯</button>
+                <button type="button" id="pv-draw" class="icon-btn" title="Vẽ/khoanh lên trang rồi gửi cho Claude">✏️</button>
+                <button type="button" id="pv-pdf" title="Xuất PDF (slide: mỗi slide một trang)">PDF</button>
+                <button type="button" id="pv-open" class="icon-btn" title="Mở ở tab mới">↗</button>
+                <button type="button" id="pv-max" class="icon-btn" title="Phóng to / thu nhỏ khung">⛶</button>
+                <button type="button" id="pv-close" class="icon-btn" title="Đóng">✕</button>
+              </div>
+              <div class="pv-stage">
+                <iframe id="pv-frame" title="Preview" sandbox="allow-scripts allow-forms allow-popups allow-modals allow-downloads" allow="fullscreen" hidden></iframe>
+                <p id="pv-msg" class="pv-msg muted" hidden></p>
+              </div>
+            </section>
           </div>
-          <div id="terminals" class="terminals"></div>
           <div id="status" class="status" hidden></div>
 
           <div id="mobile-bar" class="mobile-bar">
@@ -136,6 +157,7 @@
             <form id="prompt-form" class="prompt-form">
               <button type="button" id="prompt-attach" class="icon-btn" title="Đính kèm ảnh" aria-label="Đính kèm ảnh">📎</button>
               <input id="prompt-image" type="file" accept="image/*" multiple hidden>
+              <button type="button" id="prompt-sketch" class="icon-btn" title="Vẽ phác rồi gửi kèm prompt" aria-label="Vẽ phác">🎨</button>
               <!-- Không đặt autocomplete="off": Chrome Android sẽ báo bàn phím tắt gợi ý, Gboard ẩn luôn nút mic -->
               <textarea id="prompt-input" name="prompt" rows="1" placeholder="Gõ prompt… (dán ảnh được, Ctrl/⌘+Enter để gửi)" autocapitalize="sentences"></textarea>
               <button type="button" id="prompt-queue" title="Thêm vào hàng đợi (tự gửi khi Claude xong)" aria-label="Thêm vào hàng đợi">⏳</button>
@@ -288,11 +310,58 @@
       <div class="entry-actions">
         <button value="download" id="entry-download">Tải về</button>
         <button value="insert">Chèn vào prompt</button>
+        <button value="preview" id="entry-preview" hidden>Xem preview</button>
         <button value="rename">Đổi tên</button>
         <button value="delete" class="danger-btn">Xóa</button>
       </div>
       <div class="dlg-actions"><button value="cancel">Đóng</button></div>
     </form>
+  </dialog>
+
+  <dialog id="dlg-feedback">
+    <form method="dialog" id="feedback-form">
+      <h2>Góp ý cho Claude</h2>
+      <p class="muted small break">Trên <span id="fb-where"></span>, phần tử <code id="fb-selector"></code></p>
+      <p id="fb-text" class="fb-text small break"></p>
+      <textarea name="note" rows="3" required placeholder="Muốn sửa gì? Ví dụ: đổi màu nút sang xanh, chữ to hơn"></textarea>
+      <div class="dlg-actions">
+        <button value="cancel" formnovalidate>Hủy</button>
+        <button value="add">Thêm vào prompt</button>
+        <button value="send" class="primary-btn">Gửi luôn</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-sketch" class="dlg-wide dlg-sketch">
+    <div class="view-head">
+      <h2 class="ellipsis">Vẽ phác</h2>
+      <button type="button" id="sk-close" class="icon-btn" aria-label="Đóng">✕</button>
+    </div>
+    <div id="sk-tools" class="sk-tools">
+      <button type="button" data-tool="pen" class="active" title="Bút">✎</button>
+      <button type="button" data-tool="rect" title="Khung chữ nhật">▭</button>
+      <button type="button" data-tool="arrow" title="Mũi tên">↗</button>
+      <button type="button" data-tool="eraser" title="Tẩy">⌫</button>
+      <span class="sk-sep"></span>
+      <button type="button" data-color="#e5484d" class="sk-color active" style="--c:#e5484d" aria-label="Đỏ"></button>
+      <button type="button" data-color="#f5a524" class="sk-color" style="--c:#f5a524" aria-label="Cam"></button>
+      <button type="button" data-color="#30a46c" class="sk-color" style="--c:#30a46c" aria-label="Xanh lá"></button>
+      <button type="button" data-color="#3e7bfa" class="sk-color" style="--c:#3e7bfa" aria-label="Xanh dương"></button>
+      <button type="button" data-color="#111111" class="sk-color" style="--c:#111111" aria-label="Đen"></button>
+      <button type="button" data-color="#ffffff" class="sk-color" style="--c:#ffffff" aria-label="Trắng"></button>
+      <span class="sk-sep"></span>
+      <button type="button" data-size="2" title="Nét mảnh">·</button>
+      <button type="button" data-size="4" class="active" title="Nét vừa">•</button>
+      <button type="button" data-size="8" title="Nét đậm">●</button>
+      <span class="sk-sep"></span>
+      <button type="button" id="sk-undo" title="Hoàn tác">↶</button>
+      <button type="button" id="sk-clear" title="Xóa hết nét">🗑</button>
+    </div>
+    <div id="sk-wrap" class="sk-wrap"><canvas id="sk-canvas"></canvas></div>
+    <div class="sk-foot">
+      <input id="sk-note" type="text" placeholder="Mô tả kèm hình vẽ (tùy chọn)">
+      <button type="button" id="sk-send" class="primary-btn">Gửi kèm prompt</button>
+    </div>
   </dialog>
 
   <dialog id="dlg-keybar">

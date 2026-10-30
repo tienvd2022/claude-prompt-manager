@@ -142,7 +142,8 @@ async function nextName(project) {
 
 // command: 'claude' | 'shell' ('claude-bypass' = claude + bypass, giữ cho tương thích).
 // prepare(name): chuẩn bị thêm cho phiên Claude (trình duyệt riêng), trả về { port, mcpConfig, prompt, env } hoặc null.
-async function create({ project, cwd, command, alias, bypass, args, prepare }) {
+// prompt: lời dặn thêm vào system prompt của Claude (cộng với lời dặn của trình duyệt).
+async function create({ project, cwd, command, alias, bypass, args, prepare, prompt }) {
   if (!COMMANDS.includes(command)) throw new Error('Lệnh không hợp lệ');
   const extraArgs = command === 'shell' ? '' : shellArgs(args);
   if (command === 'claude-bypass') bypass = true;
@@ -172,8 +173,9 @@ async function create({ project, cwd, command, alias, bypass, args, prepare }) {
   if (isClaude) {
     // bypass: Claude tự chạy mọi lệnh mà không hỏi; mặc định là auto mode.
     const mode = bypass ? '--dangerously-skip-permissions' : '--permission-mode auto';
-    const browser = extra ? ` --mcp-config ${shq(extra.mcpConfig)} --append-system-prompt ${shq(extra.prompt)}` : '';
-    await tmux(['send-keys', '-t', `=${name}:`, `${alias} ${mode} ${HOOKS}${browser}${extraArgs}`, 'Enter']);
+    const system = [prompt, extra?.prompt].filter(Boolean).join('\n\n');
+    const more = `${extra ? ` --mcp-config ${shq(extra.mcpConfig)}` : ''}${system ? ` --append-system-prompt ${shq(system)}` : ''}`;
+    await tmux(['send-keys', '-t', `=${name}:`, `${alias} ${mode} ${HOOKS}${more}${extraArgs}`, 'Enter']);
   }
   return { name, project, kind, alias, cwd, browser: extra?.port || null };
 }
