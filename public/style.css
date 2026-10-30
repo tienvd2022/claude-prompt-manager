@@ -361,10 +361,8 @@ dialog legend { color: var(--muted); font-size: 13px; padding: 0 4px; }
 dialog label.inline { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 14px; }
 dialog label.inline input { width: auto; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.choice { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.choice button { padding: 14px; font-size: 15px; }
-/* Bấm giữ nút Claude: chặn menu/chọn chữ của trình duyệt điện thoại */
-#new-claude { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+.dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dlg-head .small-btn { padding: 6px 10px; font-size: 13px; }
 .new-advanced { display: grid; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; }
 .new-advanced.danger { border-color: var(--danger); }
 .new-advanced p { margin: 0; }
