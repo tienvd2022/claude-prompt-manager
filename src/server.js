@@ -238,6 +238,7 @@ route('POST', '/api/projects/:p/upload', async (req, res, p, url) => {
   const q = url.searchParams;
   sendJson(res, 201, await files.upload(req, p, q.get('path'), q.get('name'), q.get('overwrite') === '1'));
 });
+route('POST', '/api/projects/:p/paste', async (req, res, p) => sendJson(res, 201, await files.savePaste(req, p)));
 route('POST', '/api/projects/:p/mkdir', async (req, res, p) => {
   const body = await readJson(req);
   await files.mkdir(p, body.path, body.name);
