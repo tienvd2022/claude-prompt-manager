@@ -10,6 +10,7 @@ Environment=NODE_ENV=production
 Environment=HOST=127.0.0.1
 Environment=PORT=4777
 Environment=TRUST_PROXY=1
+Environment=PROJECTS_DIR=%h/projects
 Restart=always
 RestartSec=3
 # Restart web không được giết tmux: các phiên Claude phải chạy tiếp.

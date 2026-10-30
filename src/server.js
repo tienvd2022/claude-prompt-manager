@@ -5,6 +5,9 @@ const http = require('http');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const auth = require('./auth');
+const files = require('./files');
+const git = require('./git');
+const projects = require('./projects');
 const tmux = require('./tmux');
 
 const PORT = Number(process.env.PORT || 4777);
@@ -21,17 +24,18 @@ const limiter = new auth.LoginLimiter();
 const socketsBySession = new Map(); // id phiên đăng nhập -> Set<WebSocket>
 
 const ROOT = path.join(__dirname, '..');
+const TYPES = { '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml' };
 const STATIC = {
   '/login': ['public/login.html', 'text/html; charset=utf-8'],
   '/': ['public/index.html', 'text/html; charset=utf-8'],
-  '/static/style.css': ['public/style.css', 'text/css; charset=utf-8'],
-  '/static/login.js': ['public/login.js', 'text/javascript; charset=utf-8'],
-  '/static/app.js': ['public/app.js', 'text/javascript; charset=utf-8'],
-  '/static/favicon.svg': ['public/favicon.svg', 'image/svg+xml'],
   '/vendor/xterm.css': ['node_modules/@xterm/xterm/css/xterm.css', 'text/css; charset=utf-8'],
   '/vendor/xterm.js': ['node_modules/@xterm/xterm/lib/xterm.js', 'text/javascript; charset=utf-8'],
   '/vendor/addon-fit.js': ['node_modules/@xterm/addon-fit/lib/addon-fit.js', 'text/javascript; charset=utf-8'],
 };
+// Mọi file .js/.css/.svg trong public/ được phục vụ ở /static/<tên>.
+for (const f of fs.readdirSync(path.join(ROOT, 'public'))) {
+  if (TYPES[path.extname(f)]) STATIC[`/static/${f}`] = [`public/${f}`, TYPES[path.extname(f)]];
+}
 const PUBLIC_PATHS = new Set(['/login', '/static/style.css', '/static/login.js', '/static/favicon.svg']);
 
 function clientIp(req) {
@@ -169,27 +173,110 @@ function handleLogout(req, res, sid) {
   sendJson(res, 200, { ok: true });
 }
 
+// ---------- API ----------
+
+const FS_ERRORS = { ENOENT: [404, 'Không tìm thấy'], EACCES: [403, 'Không có quyền'], EPERM: [403, 'Không có quyền'], EEXIST: [409, 'Đã tồn tại'], ENOTDIR: [400, 'Không phải thư mục'], EISDIR: [400, 'Là thư mục'], ENOTEMPTY: [409, 'Thư mục không trống'] };
+
+function apiError(res, err) {
+  if (err.status) return sendJson(res, err.status, { error: err.message });
+  if (FS_ERRORS[err.code]) return sendJson(res, FS_ERRORS[err.code][0], { error: FS_ERRORS[err.code][1] });
+  throw err;
+}
+
+const routes = [];
+function route(method, pattern, handler) {
+  routes.push({ method, re: new RegExp(`^${pattern.replace(/:\w+/g, '([^/]+)')}$`), handler });
+}
+
+async function projectsWithSessions() {
+  const [list, all] = await Promise.all([projects.list(), tmux.list()]);
+  for (const p of list) p.sessions = all.filter((s) => s.project === p.name).length;
+  return list;
+}
+
+route('GET', '/api/projects', async (req, res) => sendJson(res, 200, { projects: await projectsWithSessions(), root: projects.PROJECTS_DIR }));
+route('POST', '/api/projects', async (req, res) => {
+  const body = await readJson(req);
+  if (body.gitUrl) return sendJson(res, 202, { job: git.clone(body.name, body.gitUrl) });
+  return sendJson(res, 201, projects.create(body.name));
+});
+
+route('GET', '/api/sessions', async (req, res) => sendJson(res, 200, { sessions: await tmux.list() }));
+route('DELETE', '/api/sessions/:name', async (req, res, name) => {
+  if (!tmux.validName(name)) return sendJson(res, 400, { error: 'Tên phiên không hợp lệ' });
+  await tmux.kill(name).catch((err) => {
+    throw projects.httpError(400, err.stderr?.trim() || err.message);
+  });
+  sendJson(res, 200, { ok: true });
+});
+route('GET', '/api/projects/:p/sessions', async (req, res, p) => {
+  projects.projectDir(p);
+  sendJson(res, 200, { sessions: (await tmux.list()).filter((s) => s.project === p) });
+});
+route('POST', '/api/projects/:p/sessions', async (req, res, p) => {
+  const body = await readJson(req);
+  const cwd = projects.projectDir(p);
+  try {
+    sendJson(res, 201, await tmux.create({ project: p, cwd, command: body.command || 'claude' }));
+  } catch (err) {
+    throw projects.httpError(400, err.stderr?.trim() || err.message);
+  }
+});
+
+route('GET', '/api/projects/:p/files', async (req, res, p, url) => sendJson(res, 200, await files.listDir(p, url.searchParams.get('path'))));
+route('GET', '/api/projects/:p/download', async (req, res, p, url) => files.download(res, p, url.searchParams.get('path')));
+route('POST', '/api/projects/:p/upload', async (req, res, p, url) => {
+  const q = url.searchParams;
+  sendJson(res, 201, await files.upload(req, p, q.get('path'), q.get('name'), q.get('overwrite') === '1'));
+});
+route('POST', '/api/projects/:p/mkdir', async (req, res, p) => {
+  const body = await readJson(req);
+  await files.mkdir(p, body.path, body.name);
+  sendJson(res, 201, { ok: true });
+});
+route('POST', '/api/projects/:p/rename', async (req, res, p) => {
+  const body = await readJson(req);
+  await files.rename(p, body.path, body.name);
+  sendJson(res, 200, { ok: true });
+});
+route('DELETE', '/api/projects/:p/files', async (req, res, p, url) => {
+  await files.remove(p, url.searchParams.get('path'));
+  sendJson(res, 200, { ok: true });
+});
+
+route('GET', '/api/projects/:p/git/status', async (req, res, p) => sendJson(res, 200, await git.status(p)));
+route('GET', '/api/projects/:p/git/log', async (req, res, p) => sendJson(res, 200, { commits: await git.log(p) }));
+route('GET', '/api/projects/:p/git/show', async (req, res, p, url) => sendJson(res, 200, { text: await git.show(p, url.searchParams.get('hash')) }));
+route('GET', '/api/projects/:p/git/diff', async (req, res, p, url) => {
+  sendJson(res, 200, { text: await git.diff(p, url.searchParams.get('path'), url.searchParams.get('untracked') === '1') });
+});
+route('POST', '/api/projects/:p/git/init', async (req, res, p) => sendJson(res, 200, { output: await git.init(p) }));
+route('POST', '/api/projects/:p/git/commit', async (req, res, p) => {
+  const body = await readJson(req);
+  sendJson(res, 200, { output: await git.commitAll(p, body.message) });
+});
+route('POST', '/api/projects/:p/git/:op', async (req, res, p, op) => sendJson(res, 202, { job: await git.remoteOp(p, op) }));
+route('GET', '/api/jobs/:id', async (req, res, id) => sendJson(res, 200, { job: git.getJob(id) }));
+
+route('GET', '/api/git/config', async (req, res) => sendJson(res, 200, await git.getConfig()));
+route('POST', '/api/git/config', async (req, res) => sendJson(res, 200, await git.setConfig(await readJson(req))));
+route('POST', '/api/git/ssh-key', async (req, res) => sendJson(res, 201, await git.createSshKey()));
+
 async function handleApi(req, res, url) {
-  if (url.pathname === '/api/sessions' && req.method === 'GET') {
-    return sendJson(res, 200, { sessions: await tmux.list() });
-  }
-  if (url.pathname === '/api/sessions' && req.method === 'POST') {
-    const body = await readJson(req);
+  for (const r of routes) {
+    if (r.method !== req.method) continue;
+    const m = url.pathname.match(r.re);
+    if (!m) continue;
+    let params;
     try {
-      const created = await tmux.create({ name: body.name, cwd: body.cwd, command: body.command || 'claude' });
-      return sendJson(res, 201, created);
-    } catch (err) {
-      return sendJson(res, 400, { error: err.message });
+      params = m.slice(1).map(decodeURIComponent);
+    } catch {
+      return sendJson(res, 400, { error: 'URL không hợp lệ' });
     }
-  }
-  const m = url.pathname.match(/^\/api\/sessions\/([^/]+)$/);
-  if (m && req.method === 'DELETE') {
-    const name = decodeURIComponent(m[1]);
     try {
-      await tmux.kill(name);
-      return sendJson(res, 200, { ok: true });
+      return await r.handler(req, res, ...params, url);
     } catch (err) {
-      return sendJson(res, 400, { error: err.stderr?.trim() || err.message });
+      return apiError(res, err);
     }
   }
   sendJson(res, 404, { error: 'Không tìm thấy' });
@@ -305,8 +392,9 @@ async function onTerminal(ws, sid, name, cols, rows) {
   });
 }
 
+projects.ensureRoot();
 server.listen(PORT, HOST, () => {
-  console.log(`claude-prompt-manager chạy tại http://${HOST}:${PORT} (tmux socket: ${tmux.SOCKET})`);
+  console.log(`claude-prompt-manager chạy tại http://${HOST}:${PORT} (tmux socket: ${tmux.SOCKET}, dự án: ${projects.PROJECTS_DIR})`);
 });
 
 function shutdown() {
