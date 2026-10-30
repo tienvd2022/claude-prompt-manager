@@ -19,6 +19,7 @@ const browser = require('./browser');
 const files = require('./files');
 const git = require('./git');
 const preview = require('./preview');
+const commands = require('./commands');
 const gitAccounts = require('./gitaccounts');
 const projects = require('./projects');
 const queue = require('./queue');
@@ -365,6 +366,11 @@ route('PUT', '/api/projects/:p/text', async (req, res, p) => {
   sendJson(res, 200, await files.writeText(p, body.path, body.text, body.mtime));
 });
 
+route('GET', '/api/projects/:p/commands', async (req, res, p, url) => {
+  const alias = url.searchParams.get('alias') || '';
+  const known = tmux.aliases().find((a) => a.name === alias);
+  sendJson(res, 200, { commands: commands.list(files.resolve(p, '').root, known?.name, known?.configDir) });
+});
 route('POST', '/api/projects/:p/preview/ticket', async (req, res, p, url, sid) => sendJson(res, 200, { base: `/preview/${preview.ticket(p, sid)}/` }));
 route('GET', '/api/projects/:p/preview/list', async (req, res, p) => sendJson(res, 200, preview.list(p)));
 route('GET', '/api/projects/:p/preview/stat', async (req, res, p, url) => sendJson(res, 200, preview.stat(p, url.searchParams.get('path'))));
