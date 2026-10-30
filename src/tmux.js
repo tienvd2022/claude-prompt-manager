@@ -14,6 +14,13 @@ const NAME_RE = /^[A-Za-z0-9_-]{1,48}$/;
 // Hook của Claude ghi trạng thái (busy/idle/waiting/ended) vào option @cpm_state của phiên tmux,
 // để hàng đợi prompt biết lúc nào Claude xong việc. --settings chỉ cộng thêm, không đè cấu hình của anh.
 const shq = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
+// Tách chuỗi tham số theo khoảng trắng (giữ nguyên phần trong "..." hoặc '...'), rồi quote từng phần cho shell.
+function shellArgs(text) {
+  if (text == null || text === '') return '';
+  if (typeof text !== 'string' || text.length > 1000 || /[\x00-\x1f]/.test(text)) throw new Error('Tham số không hợp lệ');
+  const parts = [...text.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3]);
+  return parts.map((p) => ` ${shq(p)}`).join('');
+}
 const HOOKS = `--settings ${shq(path.join(__dirname, 'claude-hooks.json'))}`;
 const COMMANDS = ['claude', 'claude-bypass', 'shell'];
 // Tắt màn hình phụ (fullscreen) của Claude để nội dung trôi vào lịch sử tmux/xterm: cuộn lên xem lại
@@ -135,8 +142,9 @@ async function nextName(project) {
 
 // command: 'claude' | 'shell' ('claude-bypass' = claude + bypass, giữ cho tương thích).
 // prepare(name): chuẩn bị thêm cho phiên Claude (trình duyệt riêng), trả về { port, mcpConfig, prompt, env } hoặc null.
-async function create({ project, cwd, command, alias, bypass, prepare }) {
+async function create({ project, cwd, command, alias, bypass, args, prepare }) {
   if (!COMMANDS.includes(command)) throw new Error('Lệnh không hợp lệ');
+  const extraArgs = command === 'shell' ? '' : shellArgs(args);
   if (command === 'claude-bypass') bypass = true;
   const isClaude = command !== 'shell';
   const list = aliases();
@@ -165,7 +173,7 @@ async function create({ project, cwd, command, alias, bypass, prepare }) {
     // bypass: Claude tự chạy mọi lệnh mà không hỏi; mặc định là auto mode.
     const mode = bypass ? '--dangerously-skip-permissions' : '--permission-mode auto';
     const browser = extra ? ` --mcp-config ${shq(extra.mcpConfig)} --append-system-prompt ${shq(extra.prompt)}` : '';
-    await tmux(['send-keys', '-t', `=${name}:`, `${alias} ${mode} ${HOOKS}${browser}`, 'Enter']);
+    await tmux(['send-keys', '-t', `=${name}:`, `${alias} ${mode} ${HOOKS}${browser}${extraArgs}`, 'Enter']);
   }
   return { name, project, kind, alias, cwd, browser: extra?.port || null };
 }

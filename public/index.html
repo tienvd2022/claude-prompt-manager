@@ -166,6 +166,9 @@
           <input type="checkbox" id="new-bypass" name="bypass">
           <span>Bypass permissions</span>
         </label>
+        <label>Tham số thêm cho Claude
+          <input id="new-args" name="args" placeholder="vd: --resume <id>, --continue, --model opus" autocomplete="off" autocapitalize="none" spellcheck="false">
+        </label>
         <p id="new-bypass-warn" class="small danger-text" hidden>Claude tự chạy mọi lệnh, sửa/xóa file mà <b>không hỏi</b>. Chỉ dùng khi anh tin chắc việc cần làm.</p>
         <button value="claude-custom" id="new-custom" class="primary-btn">Mở Claude</button>
       </div>

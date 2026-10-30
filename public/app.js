@@ -440,6 +440,7 @@ const newClaudeBtn = $('#new-claude');
 const advancedBox = $('#new-advanced');
 const aliasSelect = $('#new-alias');
 const bypassInput = $('#new-bypass');
+const argsInput = $('#new-args');
 let holdTimer = null;
 let held = false;
 
@@ -460,11 +461,18 @@ function syncBypass() {
   $('#new-custom').textContent = bypassInput.checked ? '⚠ Mở Claude (bypass permissions)' : 'Mở Claude';
 }
 bypassInput.addEventListener('change', syncBypass);
+// Enter trong ô tham số: mở Claude với tùy chọn đã chọn (mặc định form sẽ bấm nút Claude thường).
+argsInput.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' || e.isComposing) return;
+  e.preventDefault();
+  dlgNew.close('claude-custom');
+});
 
 $('#btn-new').addEventListener('click', () => {
   dlgNew.returnValue = '';
   advancedBox.hidden = true;
   bypassInput.checked = false;
+  argsInput.value = '';
   syncBypass();
   dlgNew.showModal();
 });
@@ -498,7 +506,7 @@ dlgNew.addEventListener('close', async () => {
   const choice = dlgNew.returnValue;
   let body;
   if (choice === 'claude' || choice === 'shell') body = { command: choice };
-  else if (choice === 'claude-custom') body = { command: 'claude', alias: aliasSelect.value || undefined, bypass: bypassInput.checked };
+  else if (choice === 'claude-custom') body = { command: 'claude', alias: aliasSelect.value || undefined, bypass: bypassInput.checked, args: argsInput.value.trim() || undefined };
   else return;
   try {
     const created = await api('POST', projectUrl(project, '/sessions'), body);
