@@ -231,6 +231,16 @@ route('GET', '/api/projects/:p/sessions', async (req, res, p) => {
 async function sessionOr404(name) {
   if (!(await tmux.exists(name))) throw projects.httpError(404, 'Không có phiên này');
 }
+route('GET', '/api/claude-aliases', async (req, res) => sendJson(res, 200, { aliases: tmux.aliases() }));
+route('PATCH', '/api/sessions/:name', async (req, res, name) => {
+  await sessionOr404(name);
+  try {
+    await tmux.setTitle(name, (await readJson(req)).title);
+  } catch (err) {
+    throw projects.httpError(400, err.stderr?.trim() || err.message);
+  }
+  sendJson(res, 200, { ok: true });
+});
 route('GET', '/api/sessions/:name/text', async (req, res, name) => {
   await sessionOr404(name);
   sendJson(res, 200, { text: await tmux.history(name, 10000, { plain: true }) });
@@ -256,7 +266,7 @@ route('POST', '/api/projects/:p/sessions', async (req, res, p) => {
   const body = await readJson(req);
   const cwd = projects.projectDir(p);
   try {
-    sendJson(res, 201, await tmux.create({ project: p, cwd, command: body.command || 'claude' }));
+    sendJson(res, 201, await tmux.create({ project: p, cwd, command: body.command || 'claude', alias: body.alias, bypass: body.bypass === true }));
   } catch (err) {
     throw projects.httpError(400, err.stderr?.trim() || err.message);
   }

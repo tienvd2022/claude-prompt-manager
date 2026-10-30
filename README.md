@@ -11,6 +11,15 @@ Luồng dùng: đăng nhập → chọn dự án → mở nhiều tab (mỗi tab
 - Thanh phím (Esc, Tab, ↑↓, ^C, Ctrl giữ, lịch sử prompt…; nút ⋯ để ẩn/sắp xếp) và ô gõ prompt cho điện thoại: nhập bằng giọng nói, đính kèm/dán ảnh.
 - **Hàng đợi prompt**: bấm ⏳ để xếp prompt, server tự gửi prompt tiếp theo khi Claude xong lượt (kể cả khi đã tắt web). Trạng thái lấy từ hook của Claude Code (`src/claude-hooks.json`, nạp qua `--settings`), nên chỉ có ở phiên Claude mở từ bản này trở đi. Bấm Esc ngắt Claude thì hàng đợi không tự chạy tiếp: mở 📋 và bấm "Gửi tiếp ngay".
 - Claude được mở với `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` để nội dung trôi vào lịch sử: vuốt lên xem lại được. Nút 📄 mở nội dung phiên dạng chữ để chọn/copy trên điện thoại.
+- **Đổi tên phiên** bằng nút ✎ trong menu phiên (chỉ đổi tên hiển thị, tên tmux giữ nguyên).
+- **Nhiều tài khoản Claude**: khai báo các alias đã có sẵn trong shell của server (vd `claude-fami='CLAUDE_CONFIG_DIR=~/.claude-fami claude'`) vào `data/claude-aliases.json`, kèm mô tả để biết alias nào là tài khoản nào:
+  ```json
+  { "aliases": [
+    { "name": "claude", "description": "Tài khoản cá nhân" },
+    { "name": "claude-fami", "description": "Tài khoản Fami" }
+  ] }
+  ```
+  Khi tạo phiên, nhấn giữ nút Claude để chọn alias và bật/tắt bypass permissions. Phiên chạy alias khác `claude` có thêm `(alias)` sau tên. Sửa file không cần restart.
 - Chạy dưới user thường, không cần root. Lệnh Claude chạy có đúng quyền của user đó.
 
 ## Bảo mật
