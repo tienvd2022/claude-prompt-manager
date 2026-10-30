@@ -352,6 +352,7 @@ async function loadAliases() {
   try {
     const { aliases } = await api('GET', '/api/claude-aliases');
     aliasSelect.replaceChildren(...aliases.map((a) => el('option', { value: a.name, text: a.description ? `${a.name} — ${a.description}` : a.name })));
+    aliasSelect.value = aliases.find((a) => a.default)?.name || '';
   } catch (err) {
     toast(err.message, 'error');
   }
