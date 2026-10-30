@@ -213,8 +213,9 @@ async function openProject(name) {
 
   if (!(await refreshSessions())) return;
   const names = new Set(sessions.map((s) => s.name));
-  for (const n of store.get(`cpm.tabs.${name}`, [])) if (names.has(n)) openTab(n);
+  // Đọc tab đang làm trước khi mở lại các tab: openTab() gọi activate() nên sẽ ghi đè thành tab cuối.
   const last = store.get(`cpm.active.${name}`, null);
+  for (const n of store.get(`cpm.tabs.${name}`, [])) if (names.has(n)) openTab(n);
   if (last && tabs.has(last)) activate(last);
   emptyEl.hidden = tabs.size > 0;
   refreshTimer = setInterval(() => document.visibilityState === 'visible' && refreshSessions(), 3000);
