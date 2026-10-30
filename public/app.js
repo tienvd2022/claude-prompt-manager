@@ -77,13 +77,13 @@ function renderProjects() {
   }
   for (const p of items) {
     const meta = [
-      p.git ? `⎇ ${p.branch || 'git'}` : 'không có git',
+      p.git ? p.branch || 'git' : 'không có git',
       p.sessions ? `${p.sessions} phiên đang chạy` : '',
       recent[p.name] ? `mở ${timeAgo(recent[p.name])}` : '',
     ].filter(Boolean).join(' · ');
     listEl.append(el('li', {}, el('a', { class: 'project-card', href: `#/p/${encodeURIComponent(p.name)}` },
       el('span', { class: 'project-name', text: p.name }),
-      el('span', { class: 'project-meta', text: meta }),
+      el('span', { class: 'project-meta' }, p.git ? el('span', { class: 'ico ico-branch' }) : null, meta),
       p.sessions ? el('span', { class: 'dot', title: 'Có phiên đang chạy' }) : null)));
   }
 }
