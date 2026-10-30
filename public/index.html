@@ -72,7 +72,7 @@
             <nav id="files-crumbs" class="crumbs" aria-label="Đường dẫn"></nav>
             <ul id="files-list" class="file-list"></ul>
             <div id="files-progress" class="progress" hidden></div>
-            <p class="hint">Kéo thả file vào đây để upload. Bấm vào file để tải về, đổi tên, xóa hoặc chèn vào prompt.</p>
+            <p class="hint">Kéo thả file vào đây để upload. Bấm vào file để xem/sửa; ấn giữ (hoặc ⋯) để tải về, đổi tên, xóa hoặc chèn vào prompt.</p>
           </div>
 
           <div id="panel-git" class="panel" hidden>
@@ -82,22 +82,42 @@
             </div>
             <div id="git-repo" hidden>
               <div class="panel-toolbar">
+                <button id="git-branch" class="branch-btn" title="Đổi nhánh"><span class="ico ico-branch"></span><span id="git-branch-name" class="ellipsis"></span><span class="muted">▾</span></button>
+                <span class="grow"></span>
+                <button id="git-refresh" class="icon-btn small" title="Làm mới" aria-label="Làm mới">↻</button>
+              </div>
+              <div class="panel-toolbar git-ops">
                 <button data-git="fetch">Fetch</button>
                 <button data-git="pull">Pull</button>
                 <button data-git="push">Push</button>
                 <span class="grow"></span>
-                <button id="git-refresh" class="icon-btn small" title="Làm mới" aria-label="Làm mới">↻</button>
+                <label class="autosync" title="Vào dự án thì pull nếu fast-forward được, có commit mới thì tự push. Lưu riêng cho dự án này trên trình duyệt."><input type="checkbox" id="git-autosync"> Tự đồng bộ</label>
               </div>
               <div id="git-info" class="git-info"></div>
               <pre id="git-job" class="job" hidden></pre>
-              <h3 class="section-title">Thay đổi (<span id="git-count">0</span>)</h3>
-              <ul id="git-changes" class="git-list"></ul>
-              <form id="git-commit-form" class="commit-form" hidden>
-                <textarea name="message" rows="2" placeholder="Nội dung commit" autocomplete="off"></textarea>
-                <button type="submit" class="primary-btn">Commit tất cả</button>
-              </form>
-              <h3 class="section-title">Commit gần đây</h3>
-              <ul id="git-log" class="git-list"></ul>
+              <div class="git-tabs" role="tablist">
+                <button data-gitview="changes" role="tab">Thay đổi (<span id="git-count">0</span>)</button>
+                <button data-gitview="log" role="tab">Lịch sử</button>
+              </div>
+              <div id="git-view-changes">
+                <form id="git-commit-form" class="commit-form" hidden>
+                  <textarea name="message" rows="2" placeholder="Nội dung commit" autocomplete="off"></textarea>
+                  <button type="submit" class="primary-btn">Commit tất cả</button>
+                </form>
+                <ul id="git-changes" class="git-list"></ul>
+              </div>
+              <div id="git-view-log" hidden>
+                <ul id="git-log" class="git-list"></ul>
+              </div>
+              <div id="git-view-commit" hidden>
+                <div class="panel-toolbar">
+                  <button id="git-commit-back">← Lịch sử</button>
+                  <span class="grow"></span>
+                  <button id="git-commit-all" title="Xem toàn bộ diff của commit">Toàn bộ diff</button>
+                </div>
+                <div id="git-commit-head" class="git-info"></div>
+                <ul id="git-commit-files" class="git-list"></ul>
+              </div>
             </div>
           </div>
         </aside>
@@ -300,6 +320,43 @@
         <button value="ok" id="confirm-ok" class="danger-btn">Đồng ý</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="dlg-branch">
+    <form method="dialog" id="branch-form">
+      <h2>Đổi nhánh</h2>
+      <ul id="branch-list" class="branch-list"></ul>
+      <label>Tạo nhánh mới từ nhánh hiện tại
+        <span class="branch-new">
+          <input name="name" placeholder="feature/abc" autocomplete="off" autocapitalize="none" spellcheck="false">
+          <button value="create" class="primary-btn">Tạo</button>
+        </span>
+      </label>
+      <p id="branch-error" class="error" role="alert"></p>
+      <div class="dlg-actions">
+        <button value="cancel" formnovalidate>Đóng</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-file" class="dlg-wide dlg-file">
+    <div class="view-head">
+      <h2 class="ellipsis"></h2>
+      <button type="button" id="fv-close" class="icon-btn" aria-label="Đóng">✕</button>
+    </div>
+    <div class="fv-bar">
+      <div id="fv-modes" class="seg">
+        <button type="button" data-mode="diff">Diff</button>
+        <button type="button" data-mode="file">File</button>
+      </div>
+      <span id="fv-meta" class="muted small ellipsis grow"></span>
+      <button type="button" id="fv-edit">✎ Sửa</button>
+      <button type="button" id="fv-cancel" hidden>Hủy</button>
+      <button type="button" id="fv-save" class="primary-btn" hidden>Lưu</button>
+    </div>
+    <pre id="fv-text" class="diff"></pre>
+    <div id="fv-image" class="fv-image" hidden><img alt=""></div>
+    <textarea id="fv-editor" class="fv-editor" hidden spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
   </dialog>
 
   <dialog id="dlg-view" class="dlg-wide">

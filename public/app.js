@@ -313,6 +313,7 @@ async function openProject(name) {
 
 function closeProject() {
   clearInterval(refreshTimer);
+  setGitProject(null);
   for (const tab of [...tabs.values()]) disposeTab(tab);
   tabs.clear();
   active = null;

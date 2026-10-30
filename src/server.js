@@ -333,11 +333,33 @@ route('DELETE', '/api/projects/:p/files', async (req, res, p, url) => {
   sendJson(res, 200, { ok: true });
 });
 
+route('GET', '/api/projects/:p/image', async (req, res, p, url) => files.image(res, p, url.searchParams.get('path')));
+route('GET', '/api/projects/:p/text', async (req, res, p, url) => sendJson(res, 200, await files.readText(p, url.searchParams.get('path'))));
+route('PUT', '/api/projects/:p/text', async (req, res, p) => {
+  const body = await readJson(req, files.MAX_TEXT * 2 + 4096);
+  sendJson(res, 200, await files.writeText(p, body.path, body.text, body.mtime));
+});
+
 route('GET', '/api/projects/:p/git/status', async (req, res, p) => sendJson(res, 200, await git.status(p)));
 route('GET', '/api/projects/:p/git/log', async (req, res, p) => sendJson(res, 200, { commits: await git.log(p) }));
 route('GET', '/api/projects/:p/git/show', async (req, res, p, url) => sendJson(res, 200, { text: await git.show(p, url.searchParams.get('hash')) }));
 route('GET', '/api/projects/:p/git/diff', async (req, res, p, url) => {
   sendJson(res, 200, { text: await git.diff(p, url.searchParams.get('path'), url.searchParams.get('untracked') === '1') });
+});
+route('GET', '/api/projects/:p/git/branches', async (req, res, p) => sendJson(res, 200, await git.branches(p)));
+route('POST', '/api/projects/:p/git/checkout', async (req, res, p) => sendJson(res, 200, { output: await git.checkout(p, await readJson(req)) }));
+route('GET', '/api/projects/:p/git/commit-files', async (req, res, p, url) => sendJson(res, 200, await git.commitFiles(p, url.searchParams.get('hash'))));
+route('GET', '/api/projects/:p/git/commit-diff', async (req, res, p, url) => {
+  const q = url.searchParams;
+  sendJson(res, 200, { text: await git.commitDiff(p, q.get('hash'), q.get('path'), q.get('from') || null) });
+});
+route('GET', '/api/projects/:p/git/file', async (req, res, p, url) => {
+  sendJson(res, 200, { text: await git.fileAt(p, url.searchParams.get('rev'), url.searchParams.get('path')) });
+});
+route('GET', '/api/projects/:p/git/image', async (req, res, p, url) => {
+  const file = url.searchParams.get('path');
+  if (!files.imageType(file || '')) throw projects.httpError(415, 'Không phải file ảnh');
+  files.sendImage(res, file, await git.rawAt(p, url.searchParams.get('rev'), file));
 });
 route('POST', '/api/projects/:p/git/init', async (req, res, p) => sendJson(res, 200, { output: await git.init(p) }));
 route('POST', '/api/projects/:p/git/commit', async (req, res, p) => {

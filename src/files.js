@@ -110,6 +110,58 @@ async function download(res, project, rel) {
   res.on('close', () => tar.kill());
 }
 
+// Kiểu ảnh xem được ngay trên web (SVG hiển thị qua <img> nên script trong đó không chạy).
+const IMAGE_TYPES = {
+  '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp',
+  '.svg': 'image/svg+xml', '.bmp': 'image/bmp', '.ico': 'image/x-icon', '.avif': 'image/avif',
+};
+const MAX_TEXT = 2 * 1024 * 1024;
+
+const imageType = (name) => IMAGE_TYPES[path.extname(name).toLowerCase()] || null;
+
+function sendImage(res, name, body) {
+  res.writeHead(200, {
+    'Content-Type': imageType(name) || 'application/octet-stream',
+    'Content-Length': body.length,
+    'Content-Security-Policy': "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+    'X-Content-Type-Options': 'nosniff',
+    'Cache-Control': 'no-store',
+  });
+  res.end(body);
+}
+
+async function image(res, project, rel) {
+  const { full } = resolve(project, rel);
+  if (!imageType(full)) throw httpError(415, 'Không phải file ảnh');
+  const st = await fs.promises.stat(full);
+  if (!st.isFile()) throw httpError(400, 'Không phải file');
+  sendImage(res, full, await fs.promises.readFile(full));
+}
+
+// Đọc file dạng chữ để xem/sửa trên web. mtime dùng để phát hiện file bị sửa chỗ khác trong lúc đang sửa.
+async function readText(project, rel) {
+  const { full, rel: clean } = resolve(project, rel);
+  const st = await fs.promises.stat(full);
+  if (!st.isFile()) throw httpError(400, 'Không phải file');
+  if (st.size > MAX_TEXT) return { path: clean, size: st.size, mtime: st.mtimeMs, tooLarge: true };
+  const buf = await fs.promises.readFile(full);
+  if (buf.subarray(0, 8000).includes(0)) return { path: clean, size: st.size, mtime: st.mtimeMs, binary: true };
+  return { path: clean, size: st.size, mtime: st.mtimeMs, text: buf.toString('utf8') };
+}
+
+async function writeText(project, rel, text, mtime) {
+  if (typeof text !== 'string') throw httpError(400, 'Thiếu nội dung');
+  const { full } = resolve(project, rel);
+  const st = await fs.promises.stat(full);
+  if (!st.isFile()) throw httpError(400, 'Không phải file');
+  if (typeof mtime === 'number' && Math.abs(st.mtimeMs - mtime) > 1) throw httpError(409, 'File vừa bị sửa ở chỗ khác, mở lại để xem bản mới');
+  const tmp = path.join(path.dirname(full), `.${path.basename(full).slice(0, 200)}.cpm-edit-${crypto.randomBytes(4).toString('hex')}`);
+  await fs.promises.writeFile(tmp, text, { mode: st.mode });
+  await fs.promises.rename(tmp, full);
+  const after = await fs.promises.stat(full);
+  return { size: after.size, mtime: after.mtimeMs };
+}
+
 // Nhận body thô và ghi vào file tạm, xong mới đổi tên, để file dở dang không đè file cũ.
 async function upload(req, project, dirRel, name, overwrite) {
   checkEntryName(name);
@@ -209,4 +261,4 @@ async function remove(project, rel) {
   await fs.promises.rm(full, { recursive: true });
 }
 
-module.exports = { MAX_UPLOAD, listDir, download, upload, savePaste, mkdir, rename, remove };
+module.exports = { MAX_UPLOAD, MAX_TEXT, imageType, sendImage, image, readText, writeText, listDir, download, upload, savePaste, mkdir, rename, remove };
