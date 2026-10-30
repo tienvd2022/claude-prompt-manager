@@ -342,6 +342,13 @@ dialog .job { margin: 0; }
 .keybar-edit label.inline { flex: 1; }
 .keybar-edit .key-label { display: inline-block; min-width: 40px; text-align: center; }
 .text-view { margin: 0; max-height: 70vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.4 Menlo, Monaco, Consolas, monospace; -webkit-user-select: text; user-select: text; }
+/* Nội dung phiên: giống terminal (nền, font, đúng từng dòng, cuộn ngang nếu dòng dài hơn khung) */
+.term-view { white-space: pre; overflow-wrap: normal; background: var(--term-bg); color: var(--text); padding: 8px; border-radius: 6px;
+  font-family: Menlo, Monaco, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace; line-height: 1.2; tab-size: 8; }
+.dlg-text { height: min(900px, calc(var(--app-height) - 16px)); max-height: none; }
+.dlg-text form { display: flex; flex-direction: column; gap: 8px; height: 100%; }
+.dlg-text p { margin: 0; }
+.dlg-text .text-view { flex: 1; min-height: 0; max-height: none; }
 .queue-item { display: flex; align-items: flex-start; gap: 4px; }
 .queue-item .queue-text { flex: 1; min-width: 0; }
 .keys button.armed { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
@@ -371,6 +378,9 @@ dialog {
   width: min(420px, calc(100vw - 32px));
 }
 dialog::backdrop { background: rgba(0, 0, 0, .55); }
+/* Đang mở dialog: trang phía sau đứng yên, cuộn tới cuối dialog cũng không kéo trang theo (common.js gắn class) */
+html.modal-open, html.modal-open body { overflow: hidden; overscroll-behavior: none; }
+dialog, dialog pre, dialog ul, dialog .diff, dialog .fv-image, dialog textarea { overscroll-behavior: contain; }
 dialog form { display: grid; gap: 12px; }
 dialog h2 { margin: 0; font-size: 16px; }
 dialog fieldset { border: 1px solid var(--border); border-radius: 6px; display: flex; gap: 16px; }
@@ -570,3 +580,33 @@ body.preview-open .stage > .empty { display: none; }
 .sk-wrap canvas { touch-action: none; cursor: crosshair; background: #fff; }
 .sk-foot { display: flex; gap: 6px; }
 .sk-foot input { flex: 1; min-width: 0; }
+
+/* Điện thoại: mọi dialog thành bottom sheet trượt lên từ đáy, cuộn bên trong sheet */
+@media (max-width: 760px) {
+  dialog:modal {
+    width: 100%;
+    max-width: none;
+    margin: auto 0 0;
+    border-width: 1px 0 0;
+    border-radius: 16px 16px 0 0;
+    max-height: calc(var(--app-height) - 24px);
+    overflow-y: auto;
+    padding: 18px 16px calc(16px + env(safe-area-inset-bottom));
+    animation: sheet-up .22s ease-out;
+  }
+  /* Vạch kéo ở đầu sheet cho dễ nhận ra là bottom sheet */
+  dialog:modal::before { content: ''; position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--border); }
+  /* Sheet chiếm gần hết màn: xem file, trình duyệt, vẽ phác, nội dung phiên */
+  dialog.dlg-wide:modal { height: calc(var(--app-height) - 24px); padding: 18px 8px calc(8px + env(safe-area-inset-bottom)); }
+  dialog.dlg-wide:modal:not(.dlg-file):not(.dlg-browser):not(.dlg-sketch):not(.dlg-text) { height: auto; }
+  /* Nội dung phiên: khung chữ rộng sát mép như terminal, để dòng vừa khít không phải cuộn ngang */
+  dialog.dlg-text:modal { padding-left: 0; padding-right: 0; }
+  .dlg-text .view-head, .dlg-text p { padding: 0 12px; }
+  .dlg-text .term-view { border-radius: 0; padding: 4px 0 4px 6px; }
+  /* Danh sách bên trong không tự cuộn riêng: cả sheet cuộn một lần cho khỏi kẹt ngón tay */
+  dialog .keybar-edit, dialog .history-list, dialog .branch-list, dialog .browse-list { max-height: none; overflow: visible; }
+  dialog .dlg-actions { flex-wrap: wrap; }
+}
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { dialog:modal { animation: none; } }
+

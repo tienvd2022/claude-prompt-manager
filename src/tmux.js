@@ -195,10 +195,11 @@ async function kill(name) {
 }
 
 // Lấy phần lịch sử đã cuộn khỏi màn hình, để trình duyệt kéo lên xem được.
-// plain=true: lấy cả màn hình hiện tại, không kèm mã màu (để xem/copy dạng chữ).
-async function history(name, lines = 3000, { plain = false } = {}) {
+// plain=true: lấy cả màn hình hiện tại, không kèm mã màu (để xem/copy dạng chữ); colors=true thì giữ mã màu.
+async function history(name, lines = 3000, { plain = false, colors = false } = {}) {
+  const flags = plain ? (colors ? ['-e'] : []) : ['-e', '-E', '-1'];
   try {
-    const out = await tmux(['capture-pane', '-p', ...(plain ? [] : ['-e', '-E', '-1']), '-J', '-S', `-${lines}`, '-t', `=${name}:`]);
+    const out = await tmux(['capture-pane', '-p', ...flags, '-J', '-S', `-${lines}`, '-t', `=${name}:`]);
     return out.replace(/\n+$/, '');
   } catch {
     return '';

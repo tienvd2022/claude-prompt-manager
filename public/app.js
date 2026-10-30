@@ -8,6 +8,7 @@ import { initFiles, setFilesProject, load as loadFiles, download } from './files
 import { initPreview, setPreviewProject, openPreview, togglePreview } from './preview.js';
 import { initSketch, openSketch } from './sketch.js';
 import { initSlash } from './slash.js';
+import { renderAnsi } from './ansi.js';
 import { initGit, setGitProject, load as loadGit } from './gitpanel.js';
 import { openBrowser } from './browserview.js';
 import { accounts as gitAccounts, checkAccount, aliasUrl, urlHost, fillAccountSelect, whoText, renderAccounts, initGitAccounts } from './gitaccounts.js';
@@ -929,13 +930,20 @@ $('#history-clear').addEventListener('click', async () => {
 const dlgText = $('#dlg-text');
 const textBody = $('#text-body');
 
+let plainText = ''; // bản chữ thường đã nối dòng, cho nút Copy hết
+
+// Hiện giống terminal: đúng từng dòng, có màu, cỡ chữ như terminal.
 async function showText() {
   if (!active) return toast('Mở một phiên trước (bấm ＋)', 'error');
+  const url = `/api/sessions/${encodeURIComponent(active)}/text`;
+  textBody.style.fontSize = `${fontSize}px`;
   textBody.textContent = 'Đang tải…';
+  plainText = '';
   dlgText.showModal();
   try {
-    const { text } = await api('GET', `/api/sessions/${encodeURIComponent(active)}/text`);
-    textBody.textContent = text.replace(/\s+$/, '') || '(trống)';
+    const [colored, plain] = await Promise.all([api('GET', `${url}?ansi=1`), api('GET', url)]);
+    plainText = plain.text.replace(/\s+$/, '');
+    renderAnsi(textBody, colored.text.replace(/\s+$/, '') || '(trống)');
     textBody.scrollTop = textBody.scrollHeight;
   } catch (err) {
     textBody.textContent = err.message;
@@ -944,7 +952,7 @@ async function showText() {
 
 $('#text-copy').addEventListener('click', async () => {
   const sel = String(getSelection());
-  const ok = await copyText(sel || textBody.textContent);
+  const ok = await copyText(sel || plainText || textBody.textContent);
   toast(ok ? (sel ? 'Đã copy đoạn đã chọn' : 'Đã copy hết') : 'Trình duyệt chặn copy, hãy chọn chữ rồi copy tay', ok ? undefined : 'error');
 });
 
