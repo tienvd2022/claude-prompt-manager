@@ -4,11 +4,11 @@ Web UI nhỏ để làm việc với Claude Code trên server, kể cả từ đ
 
 Luồng dùng: đăng nhập → chọn dự án → mở nhiều tab (mỗi tab là một phiên Claude hoặc terminal) → prompt.
 
-- **Dự án**: mọi dự án nằm trong một thư mục (`~/projects`, đổi bằng `PROJECTS_DIR`), mỗi dự án là một thư mục con. Tạo thư mục trống hoặc clone từ git.
+- **Dự án**: mọi dự án nằm trong một thư mục (`~/projects`, đổi bằng `PROJECTS_DIR`), mỗi dự án là một thư mục con. Tạo dự án: **Thư mục trống** (không git), **Clone** từ URL (chọn tài khoản SSH thì URL tự đi qua alias của tài khoản đó), hoặc **Tạo repo mới**: chọn tài khoản git (alias), app tạo repo trên GitHub (mặc định private, chủ repo sửa được để tạo trong organization) rồi clone về.
 - **Mở thư mục bất kỳ**: nút 📂 ở trang Dự án để duyệt thư mục trên server và mở một thư mục con (vd chỗ có `.git`) hoặc thư mục nằm ngoài thư mục dự án. Thư mục này chỉ hiện trong danh sách dự án khi còn phiên đang chạy; kết thúc hết phiên thì ẩn, vào lại bằng 📂 → "🕘 Gần đây" (✕ để bỏ thư mục khỏi danh sách gần đây, không xóa trên đĩa).
 - **Phiên**: mỗi tab là một session tmux (socket riêng `-L cpm`) chạy trong thư mục dự án. Đóng tab hay đóng web thì Claude vẫn chạy.
 - **File**: duyệt thư mục, bấm file để xem (chữ, ảnh, SVG) và ✎ Sửa file chữ ngay trên web; ấn giữ (hoặc ⋯) để tải file/thư mục (.tar.gz), đổi tên, xóa, chèn `@đường-dẫn` vào prompt. Upload bằng nút hoặc kéo thả.
-- **Git**: đổi/tạo nhánh; xem thay đổi hiện tại (diff hoặc xem file), commit tất cả; lịch sử commit → file đổi trong commit → diff hoặc xem file tại commit đó; fetch / pull (`--ff-only`) / push. **Tự đồng bộ** (mặc định tắt mỗi lần vào dự án, chỉ cho nhánh đang đứng lúc bật; đổi nhánh, kể cả Claude checkout trong terminal, là tự tắt): bật lên thì pull một lần nếu fast-forward được, sau đó thấy commit mới (kể cả Claude commit) thì push ngay; không bao giờ tự commit; nhánh đã tách hoặc chưa có trên remote thì không tự làm gì. Clone/push qua SSH dùng key của server.
+- **Git**: đổi/tạo nhánh; xem thay đổi hiện tại (diff hoặc xem file), commit tất cả; lịch sử commit → file đổi trong commit → diff hoặc xem file tại commit đó; fetch / pull (`--ff-only`) / push. **Tự đồng bộ** (mặc định tắt mỗi lần vào dự án, chỉ cho nhánh đang đứng lúc bật; đổi nhánh, kể cả Claude checkout trong terminal, là tự tắt): bật lên thì pull một lần nếu fast-forward được, sau đó thấy commit mới (kể cả Claude commit) thì push ngay; không bao giờ tự commit; nhánh đã tách hoặc chưa có trên remote thì không tự làm gì. Clone/push qua SSH dùng key của server. ✎ cạnh dòng origin để đổi/thêm remote origin (chọn tài khoản để đổi host sang alias).
 - Thanh phím (Esc, Tab, ↑↓, ^C, Ctrl giữ, lịch sử prompt…; nút ⋯ để ẩn/sắp xếp) và ô gõ prompt cho điện thoại: nhập bằng giọng nói, đính kèm/dán ảnh.
 - **Hàng đợi prompt**: bấm ⏳ để xếp prompt, server tự gửi prompt tiếp theo khi Claude xong lượt (kể cả khi đã tắt web). Trạng thái lấy từ hook của Claude Code (`src/claude-hooks.json`, nạp qua `--settings`), nên chỉ có ở phiên Claude mở từ bản này trở đi. Bấm Esc ngắt Claude thì hàng đợi không tự chạy tiếp: mở 📋 và bấm "Gửi tiếp ngay".
 - Claude được mở với `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` để nội dung trôi vào lịch sử: vuốt lên xem lại được. Nút 📄 mở nội dung phiên dạng chữ để chọn/copy trên điện thoại; ở phiên Claude, các dòng Claude tự ngắt theo độ rộng màn hình lúc in được nối lại thành đoạn liền (lệnh và kết quả công cụ giữ nguyên). Trên điện thoại: kéo trong terminal để cuộn (vuốt nhanh có quán tính), nhấn giữ để chọn chữ, kéo tiếp để chọn rộng thêm, rồi bấm Copy.
@@ -59,11 +59,14 @@ Upload file lớn qua nginx: nginx mặc định giới hạn body (CloudPanel t
 
 Nếu domain đi qua Cloudflare (proxy cam), IP thấy được là IP Cloudflare nên rate limit theo IP gần như thành rate limit chung — vẫn an toàn, chỉ là dễ bị khóa chung hơn.
 
-### Git qua SSH
+### Git qua SSH, nhiều tài khoản
 
-1. Trên web: ⚙ (màn Dự án) → **Tạo SSH key** → Copy public key.
-2. Thêm key vào GitHub → Settings → SSH keys (hoặc Deploy keys của từng repo nếu muốn giới hạn).
-3. Điền tên/email hiện trong commit rồi Lưu.
+⚙ (màn Dự án) → **Tài khoản git**: đọc các alias git trong `~/.ssh/config` của server (vd `github.com`, `github.com-tienvd2022`), mỗi alias một key riêng. Host không phải git (vps…) thì ẩn.
+
+- **Public key** → Copy, đem add vào GitHub → Settings → SSH keys của đúng tài khoản. **Kiểm tra** chạy `ssh -T` để xem key đang vào được tài khoản nào.
+- **＋ Thêm** alias: tạo key ed25519 mới `~/.ssh/id_ed25519_<alias>` và thêm khối `Host` vào `~/.ssh/config` (bản cũ chép ra `config.cpm-backup`; không sửa/xóa key có sẵn). Clone/push bằng `git@<alias>:user/repo.git` là ra đúng tài khoản.
+- **Tạo repo mới** cần token GitHub (SSH không tạo repo được): app lấy từ `gh auth token -u <tài khoản>` nếu server đã `gh auth login` tài khoản đó, không thì bấm **Token** để nhập Personal Access Token (quyền `repo`), lưu ở `data/git-tokens.json` (chmod 600).
+- Điền tên/email hiện trong commit rồi Lưu.
 
 Host lạ được tự chấp nhận lần đầu (`StrictHostKeyChecking=accept-new`). Git không bao giờ hỏi mật khẩu trên web: repo HTTPS riêng tư sẽ báo lỗi, hãy dùng URL SSH.
 

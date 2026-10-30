@@ -2,11 +2,12 @@
 
 /* global Terminal, FitAddon */
 
-import { $, el, api, store, projectUrl, timeAgo, toast, confirmDialog, inputDialog, followJob, isTouch, isNarrow, nativeApp } from './common.js';
+import { $, el, api, store, projectUrl, timeAgo, toast, confirmDialog, inputDialog, followJob, isTouch, isNarrow, nativeApp, copyText } from './common.js';
 import { attachTouch } from './touchterm.js';
 import { initFiles, setFilesProject, load as loadFiles } from './files.js';
 import { initGit, setGitProject, load as loadGit } from './gitpanel.js';
 import { openBrowser } from './browserview.js';
+import { accounts as gitAccounts, checkAccount, aliasUrl, urlHost, fillAccountSelect, whoText, renderAccounts, initGitAccounts } from './gitaccounts.js';
 
 const viewProjects = $('#view-projects');
 const viewWorkspace = $('#view-workspace');
@@ -182,45 +183,127 @@ $('#browse-form').addEventListener('submit', async (e) => {
   }
 });
 
-// Tạo dự án trống hoặc clone từ git.
+// Tạo dự án: thư mục trống (không git), clone từ URL, hoặc tạo repo mới trên GitHub qua một tài khoản rồi clone về.
 const dlgProject = $('#dlg-project');
 const projectForm = $('#project-form');
+const projectNote = $('#project-note');
 let autoName = true;
+let ownerTouched = false;
+let accountList = [];
 
-$('#btn-new-project').addEventListener('click', () => {
+const projectMode = () => projectForm.querySelector('input[name="mode"]:checked').value;
+
+$('#btn-new-project').addEventListener('click', async () => {
   projectForm.reset();
   autoName = true;
+  ownerTouched = false;
   $('#project-error').textContent = '';
   $('#project-job').hidden = true;
   setProjectFormBusy(false);
+  showProjectMode();
   dlgProject.showModal();
+  try {
+    accountList = await gitAccounts();
+  } catch {
+    accountList = [];
+  }
+  fillAccountSelect(projectForm.cloneAccount, accountList, { none: 'Theo URL' });
+  fillAccountSelect(projectForm.account, accountList.filter((a) => a.keyExists), { value: store.get('cpm.newRepoAccount', '') });
+  updateProjectNote();
 });
 
+function showProjectMode() {
+  const mode = projectMode();
+  $('#pm-clone').hidden = mode !== 'clone';
+  $('#pm-create').hidden = mode !== 'create';
+  updateProjectNote();
+}
+
+const cloneAccount = () => accountList.find((a) => a.alias === projectForm.cloneAccount.value);
+const cloneUrl = () => aliasUrl(projectForm.gitUrl.value, cloneAccount());
+
+async function updateProjectNote() {
+  const mode = projectMode();
+  if (mode === 'empty') {
+    projectNote.textContent = 'Chỉ tạo thư mục, chưa có git (vào panel Git bấm git init khi cần).';
+    return;
+  }
+  if (mode === 'clone') {
+    const url = cloneUrl();
+    projectNote.textContent = url && url !== projectForm.gitUrl.value.trim() ? `Clone bằng: ${url}` : '';
+    return;
+  }
+  const alias = projectForm.account.value;
+  if (!alias) {
+    projectNote.textContent = 'Chưa có tài khoản nào có key. Thêm trong ⚙ Cài đặt Git.';
+    return;
+  }
+  projectNote.textContent = `${alias}: đang dò tài khoản…`;
+  let info;
+  try {
+    info = await checkAccount(alias);
+  } catch (err) {
+    info = { message: err.message };
+  }
+  if (projectForm.account.value !== alias || projectMode() !== 'create') return;
+  if (info.login && !ownerTouched) projectForm.owner.value = info.login;
+  const name = projectForm.name.value.trim() || '<tên>';
+  projectNote.textContent = !info.login ? `${alias}: ${whoText(info)}`
+    : info.provider !== 'github' ? 'Tạo repo mới hiện chỉ hỗ trợ GitHub.'
+    : `${whoText(info)}. Sẽ tạo github.com/${projectForm.owner.value.trim() || info.login}/${name} rồi clone về.`;
+}
+
+projectForm.addEventListener('change', (e) => {
+  if (e.target.name === 'mode') showProjectMode();
+  else if (e.target.name === 'account' || e.target.name === 'cloneAccount' || e.target.name === 'private') updateProjectNote();
+});
 projectForm.gitUrl.addEventListener('input', () => {
+  // Dán URL có host trùng alias nào thì chọn sẵn tài khoản đó.
+  const host = urlHost(projectForm.gitUrl.value);
+  if (accountList.some((a) => a.alias === host)) projectForm.cloneAccount.value = host;
+  updateProjectNote();
   if (!autoName) return;
   const m = projectForm.gitUrl.value.trim().match(/([^/:]+?)(?:\.git)?\/?$/);
   projectForm.name.value = m ? m[1].replace(/[^A-Za-z0-9._-]/g, '-') : '';
 });
 projectForm.name.addEventListener('input', () => {
   autoName = !projectForm.name.value;
+  if (projectMode() === 'create') updateProjectNote();
+});
+projectForm.owner.addEventListener('input', () => {
+  ownerTouched = !!projectForm.owner.value;
+  updateProjectNote();
 });
 
 function setProjectFormBusy(busy) {
-  for (const b of projectForm.querySelectorAll('button, input')) b.disabled = busy;
+  for (const b of projectForm.querySelectorAll('button, input, select')) b.disabled = busy;
 }
 
 projectForm.addEventListener('submit', async (e) => {
   if (e.submitter?.value !== 'ok') return;
   e.preventDefault();
   const name = projectForm.name.value.trim();
-  const gitUrl = projectForm.gitUrl.value.trim();
+  const mode = projectMode();
+  const body = { name };
+  if (mode === 'clone') {
+    if (!projectForm.gitUrl.value.trim()) return projectForm.gitUrl.focus();
+    body.gitUrl = cloneUrl();
+  } else if (mode === 'create') {
+    if (!projectForm.account.value) return;
+    body.repo = { alias: projectForm.account.value, owner: projectForm.owner.value.trim() || undefined, private: projectForm.private.checked };
+    store.set('cpm.newRepoAccount', projectForm.account.value);
+  }
   $('#project-error').textContent = '';
   setProjectFormBusy(true);
   try {
-    const res = await api('POST', '/api/projects', { name, gitUrl: gitUrl || undefined });
+    const res = await api('POST', '/api/projects', body);
     if (res.job) {
       const job = await followJob(res.job, $('#project-job'));
-      if (job.status !== 'ok') throw new Error('Clone lỗi, xem chi tiết ở trên. Nếu là repo private qua SSH, kiểm tra SSH key trong ⚙ Cài đặt Git.');
+      if (job.status !== 'ok') {
+        throw new Error(mode === 'create'
+          ? `Đã tạo repo ${res.url} nhưng clone lỗi, xem chi tiết ở trên. Kiểm tra public key của tài khoản trong ⚙ Cài đặt Git.`
+          : 'Clone lỗi, xem chi tiết ở trên. Nếu là repo private qua SSH, kiểm tra tài khoản SSH trong ⚙ Cài đặt Git.');
+      }
     }
     dlgProject.close();
     location.hash = `#/p/${encodeURIComponent(name)}`;
@@ -231,7 +314,7 @@ projectForm.addEventListener('submit', async (e) => {
   }
 });
 
-// Cài đặt git chung: tên/email để commit, SSH key để clone/push.
+// Cài đặt git chung: tên/email để commit, tài khoản SSH để clone/push.
 const dlgGit = $('#dlg-git');
 const gitForm = $('#git-settings-form');
 
@@ -249,27 +332,11 @@ async function openGitSettings() {
 function renderGitSettings(cfg) {
   gitForm.name.value = cfg.name;
   gitForm.email.value = cfg.email;
-  $('#ssh-key').value = cfg.sshKey || '';
-  $('#ssh-key-box').hidden = !cfg.sshKey;
-  $('#btn-ssh-create').hidden = !!cfg.sshKey;
+  renderAccounts();
 }
 
 $('#btn-git-settings').addEventListener('click', openGitSettings);
-$('#btn-ssh-create').addEventListener('click', async () => {
-  try {
-    renderGitSettings(await api('POST', '/api/git/ssh-key'));
-  } catch (err) {
-    $('#git-settings-error').textContent = err.message;
-  }
-});
-$('#btn-ssh-copy').addEventListener('click', async () => {
-  try {
-    await navigator.clipboard.writeText($('#ssh-key').value);
-    toast('Đã copy SSH key');
-  } catch {
-    $('#ssh-key').select();
-  }
-});
+initGitAccounts();
 gitForm.addEventListener('submit', async (e) => {
   if (e.submitter?.value !== 'ok') return;
   e.preventDefault();
@@ -866,22 +933,6 @@ async function showText() {
     textBody.scrollTop = textBody.scrollHeight;
   } catch (err) {
     textBody.textContent = err.message;
-  }
-}
-
-async function copyText(text) {
-  // navigator.clipboard chỉ có trên HTTPS/localhost; mở qua IP LAN thì dùng cách cũ.
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    const ta = el('textarea', { readonly: true, style: 'position:fixed;opacity:0' });
-    ta.value = text;
-    (dlgText.open ? dlgText : document.body).append(ta);
-    ta.select();
-    const ok = document.execCommand('copy');
-    ta.remove();
-    return ok;
   }
 }
 

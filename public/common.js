@@ -163,3 +163,20 @@ export async function followJob(job, pre) {
     job = (await api('GET', `/api/jobs/${job.id}`)).job;
   }
 }
+
+export async function copyText(text) {
+  // navigator.clipboard chỉ có trên HTTPS/localhost; mở qua IP LAN thì dùng cách cũ.
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    const ta = el('textarea', { readonly: true, style: 'position:fixed;opacity:0' });
+    ta.value = text;
+    // Đang mở dialog thì phải gắn vào trong nó, không thì không chọn được chữ.
+    (document.querySelector('dialog[open]') || document.body).append(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  }
+}
