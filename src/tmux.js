@@ -22,11 +22,12 @@ const COMMANDS = ['claude', 'claude-bypass', 'shell'];
 const CLAUDE_ENV = 'CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1';
 
 // Các alias Claude đã khai báo sẵn trong shell của server (vd claude-fami), liệt kê trong data/claude-aliases.json:
-//   { "aliases": [{ "name": "claude", "description": "Tài khoản cá nhân" }, "claude-fami"] }
-// Mỗi mục là tên alias hoặc { name, description }. Đọc lại mỗi lần để sửa file không cần restart.
+//   { "default": "claude-fami", "aliases": [{ "name": "claude", "description": "Tài khoản cá nhân" }, "claude-fami"] }
+// Mỗi mục là tên alias hoặc { name, description }. "default" là alias dùng khi bấm nút Claude thường
+// (không có thì lấy mục đầu). Đọc lại mỗi lần để sửa file không cần restart.
 const ALIASES_FILE = path.join(__dirname, '..', 'data', 'claude-aliases.json');
 const ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
-const DEFAULT_ALIASES = [{ name: 'claude', description: '' }];
+const DEFAULT_ALIASES = [{ name: 'claude', description: '', default: true }];
 
 function aliases() {
   let data;
@@ -35,7 +36,7 @@ function aliases() {
   } catch (err) {
     if (err.code === 'ENOENT') {
       fs.mkdirSync(path.dirname(ALIASES_FILE), { recursive: true, mode: 0o700 });
-      fs.writeFileSync(ALIASES_FILE, `${JSON.stringify({ aliases: DEFAULT_ALIASES }, null, 2)}\n`, { mode: 0o600 });
+      fs.writeFileSync(ALIASES_FILE, `${JSON.stringify({ default: 'claude', aliases: [{ name: 'claude', description: '' }] }, null, 2)}\n`, { mode: 0o600 });
     } else console.error(`[aliases] ${ALIASES_FILE}: ${err.message}`);
     return DEFAULT_ALIASES;
   }
@@ -46,9 +47,11 @@ function aliases() {
     if (typeof name !== 'string' || !ALIAS_RE.test(name) || seen.has(name)) continue;
     seen.add(name);
     const description = typeof item?.description === 'string' ? item.description.slice(0, 200) : '';
-    list.push({ name, description });
+    list.push({ name, description, default: false });
   }
-  return list.length ? list : DEFAULT_ALIASES;
+  if (!list.length) return DEFAULT_ALIASES;
+  (list.find((a) => a.name === data?.default) || list[0]).default = true;
+  return list;
 }
 
 const SHELLS = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'ksh', 'login', '-bash', '-zsh']);
@@ -134,9 +137,9 @@ async function create({ project, cwd, command, alias, bypass }) {
   if (!COMMANDS.includes(command)) throw new Error('Lệnh không hợp lệ');
   if (command === 'claude-bypass') bypass = true;
   const isClaude = command !== 'shell';
-  const names = aliases().map((a) => a.name);
-  alias = isClaude ? alias || names[0] : '';
-  if (isClaude && !names.includes(alias)) throw new Error(`Alias "${alias}" không có trong ${ALIASES_FILE}`);
+  const list = aliases();
+  alias = isClaude ? alias || list.find((a) => a.default).name : '';
+  if (isClaude && !list.some((a) => a.name === alias)) throw new Error(`Alias "${alias}" không có trong ${ALIASES_FILE}`);
   const kind = isClaude ? (bypass ? 'claude-bypass' : 'claude') : 'shell';
   const name = await nextName(project);
   // Gắn tên dự án, loại phiên, alias vào chính session tmux, để restart web vẫn biết phiên thuộc dự án nào.

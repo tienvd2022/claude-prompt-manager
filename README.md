@@ -14,12 +14,12 @@ Luồng dùng: đăng nhập → chọn dự án → mở nhiều tab (mỗi tab
 - **Đổi tên phiên** bằng nút ✎ trong menu phiên (chỉ đổi tên hiển thị, tên tmux giữ nguyên).
 - **Nhiều tài khoản Claude**: khai báo các alias đã có sẵn trong shell của server (vd `claude-fami='CLAUDE_CONFIG_DIR=~/.claude-fami claude'`) vào `data/claude-aliases.json`, kèm mô tả để biết alias nào là tài khoản nào:
   ```json
-  { "aliases": [
+  { "default": "claude-fami", "aliases": [
     { "name": "claude", "description": "Tài khoản cá nhân" },
     { "name": "claude-fami", "description": "Tài khoản Fami" }
   ] }
   ```
-  Khi tạo phiên, nhấn giữ nút Claude để chọn alias và bật/tắt bypass permissions. Phiên chạy alias khác `claude` có thêm `(alias)` sau tên. Sửa file không cần restart.
+  Bấm nút Claude thường thì mở alias `default` (không ghi thì lấy alias đầu tiên); nhấn giữ nút Claude để chọn alias khác và bật/tắt bypass permissions. Phiên chạy alias khác `claude` có thêm `(alias)` sau tên. Sửa file không cần restart.
 - Chạy dưới user thường, không cần root. Lệnh Claude chạy có đúng quyền của user đó.
 
 ## Bảo mật
