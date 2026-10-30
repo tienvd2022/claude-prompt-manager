@@ -22,6 +22,7 @@
       <div class="projects-body">
         <div class="projects-head">
           <input id="project-filter" name="filter" type="search" placeholder="Tìm dự án…" autocomplete="off" autocapitalize="none" spellcheck="false">
+          <button id="btn-open-folder" title="Mở thư mục bất kỳ trên server (thư mục con, ngoài thư mục dự án…)" aria-label="Mở thư mục">📂</button>
           <button id="btn-new-project" class="primary-btn">＋ Dự án mới</button>
         </div>
         <ul id="project-list" class="project-list"></ul>
@@ -169,6 +170,28 @@
     </form>
   </dialog>
 
+  <dialog id="dlg-browse">
+    <form method="dialog" id="browse-form">
+      <h2>Mở thư mục làm dự án</h2>
+      <div class="browse-path">
+        <input id="browse-path" name="path" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Đường dẫn">
+        <button value="go">Đi</button>
+      </div>
+      <div class="browse-tools">
+        <button type="button" id="browse-up" title="Thư mục cha">↑ Lên</button>
+        <button type="button" id="browse-home" title="Thư mục home">~</button>
+        <button type="button" id="browse-root" title="Thư mục dự án">Dự án</button>
+        <label class="inline small"><input type="checkbox" id="browse-hidden"> Hiện thư mục ẩn</label>
+      </div>
+      <ul id="browse-list" class="history-list browse-list"></ul>
+      <p id="browse-error" class="error" role="alert"></p>
+      <div class="dlg-actions">
+        <button value="cancel">Hủy</button>
+        <button value="open" class="primary-btn">Mở thư mục này</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="dlg-git">
     <form method="dialog" id="git-settings-form">
       <h2>Cài đặt Git</h2>
@@ -269,7 +292,7 @@
 
   <dialog id="dlg-confirm">
     <form method="dialog">
-      <p id="confirm-text"></p>
+      <p id="confirm-text" class="pre-line"></p>
       <div class="dlg-actions">
         <button value="cancel">Hủy</button>
         <button value="ok" id="confirm-ok" class="danger-btn">Đồng ý</button>
