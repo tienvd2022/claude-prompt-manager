@@ -203,7 +203,8 @@ function route(method, pattern, handler) {
 async function projectsWithSessions() {
   const [list, all] = await Promise.all([projects.list(), tmux.list()]);
   for (const p of list) p.sessions = all.filter((s) => s.project === p.name).length;
-  return list;
+  // Thư mục mở thêm (ngoài thư mục dự án) chỉ hiện khi còn phiên đang chạy; muốn vào lại thì mở bằng 📂.
+  return list.filter((p) => !p.linked || p.sessions);
 }
 
 route('GET', '/api/projects', async (req, res) => sendJson(res, 200, { projects: await projectsWithSessions(), root: projects.PROJECTS_DIR }));
@@ -215,11 +216,6 @@ route('POST', '/api/projects', async (req, res) => {
 
 route('GET', '/api/browse', async (req, res, url) => sendJson(res, 200, await projects.browse(url.searchParams.get('path'), { hidden: url.searchParams.get('hidden') === '1' })));
 route('POST', '/api/projects/open', async (req, res) => sendJson(res, 200, projects.open((await readJson(req)).path)));
-route('DELETE', '/api/projects/:p/link', async (req, res, p) => {
-  if ((await tmux.list()).some((s) => s.project === p)) throw projects.httpError(409, 'Dự án còn phiên đang chạy, kết thúc phiên trước');
-  projects.unlink(p);
-  sendJson(res, 200, { ok: true });
-});
 route('GET', '/api/sessions', async (req, res) => sendJson(res, 200, { sessions: await tmux.list() }));
 route('DELETE', '/api/sessions/:name', async (req, res, name) => {
   if (!tmux.validName(name)) return sendJson(res, 400, { error: 'Tên phiên không hợp lệ' });

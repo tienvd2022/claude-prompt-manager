@@ -81,26 +81,15 @@ function renderProjects() {
       p.sessions ? `${p.sessions} phiên đang chạy` : '',
       recent[p.name] ? `mở ${timeAgo(recent[p.name])}` : '',
     ].filter(Boolean).join(' · ');
-    listEl.append(el('li', { class: 'project-item' }, el('a', { class: 'project-card', href: `#/p/${encodeURIComponent(p.name)}` },
+    listEl.append(el('li', {}, el('a', { class: 'project-card', href: `#/p/${encodeURIComponent(p.name)}` },
       el('span', { class: 'project-name', text: p.name }),
       el('span', { class: 'project-meta' }, p.git ? el('span', { class: 'ico ico-branch' }) : null, meta),
       p.linked ? el('span', { class: 'project-path', text: p.path }) : null,
-      p.sessions ? el('span', { class: 'dot', title: 'Có phiên đang chạy' }) : null),
-      p.linked ? el('button', { class: 'icon-btn small', title: 'Bỏ khỏi danh sách (không xóa thư mục)', 'aria-label': 'Bỏ khỏi danh sách', text: '✕', onclick: () => unlinkProject(p) }) : null));
+      p.sessions ? el('span', { class: 'dot', title: 'Có phiên đang chạy' }) : null)));
   }
 }
 
 $('#project-filter').addEventListener('input', renderProjects);
-
-async function unlinkProject(p) {
-  if (!(await confirmDialog(`Bỏ "${p.name}" khỏi danh sách dự án?\n${p.path}\nThư mục trên server vẫn giữ nguyên.`, 'Bỏ'))) return;
-  try {
-    await api('DELETE', `/api/projects/${encodeURIComponent(p.name)}/link`);
-  } catch (err) {
-    toast(err.message, 'error');
-  }
-  showProjects();
-}
 
 // Duyệt thư mục trên server để mở một thư mục bất kỳ làm dự án (thư mục con có git, thư mục ngoài…).
 const dlgBrowse = $('#dlg-browse');
