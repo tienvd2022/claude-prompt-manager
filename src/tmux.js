@@ -1,6 +1,7 @@
 'use strict';
 
 const { execFile } = require('child_process');
+const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const pty = require('node-pty');
@@ -14,15 +15,42 @@ const NAME_RE = /^[A-Za-z0-9_-]{1,48}$/;
 // để hàng đợi prompt biết lúc nào Claude xong việc. --settings chỉ cộng thêm, không đè cấu hình của anh.
 const shq = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
 const HOOKS = `--settings ${shq(path.join(__dirname, 'claude-hooks.json'))}`;
+const COMMANDS = ['claude', 'claude-bypass', 'shell'];
 // Tắt màn hình phụ (fullscreen) của Claude để nội dung trôi vào lịch sử tmux/xterm: cuộn lên xem lại
 // và xem/copy dạng chữ được. Ở chế độ fullscreen, tmux không giữ được dòng nào đã trôi qua.
-const CLAUDE = 'CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1 claude';
-const COMMANDS = {
-  claude: `${CLAUDE} --permission-mode auto ${HOOKS}`,
-  // Chỉ mở khi bấm giữ nút Claude: bỏ qua mọi bước hỏi quyền.
-  'claude-bypass': `${CLAUDE} --dangerously-skip-permissions ${HOOKS}`,
-  shell: null,
-};
+// Đặt qua môi trường của phiên (không viết VAR=1 trước lệnh) để alias của shell vẫn được mở rộng.
+const CLAUDE_ENV = 'CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1';
+
+// Các alias Claude đã khai báo sẵn trong shell của server (vd claude-fami), liệt kê trong data/claude-aliases.json:
+//   { "aliases": [{ "name": "claude", "description": "Tài khoản cá nhân" }, "claude-fami"] }
+// Mỗi mục là tên alias hoặc { name, description }. Đọc lại mỗi lần để sửa file không cần restart.
+const ALIASES_FILE = path.join(__dirname, '..', 'data', 'claude-aliases.json');
+const ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const DEFAULT_ALIASES = [{ name: 'claude', description: '' }];
+
+function aliases() {
+  let data;
+  try {
+    data = JSON.parse(fs.readFileSync(ALIASES_FILE, 'utf8'));
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      fs.mkdirSync(path.dirname(ALIASES_FILE), { recursive: true, mode: 0o700 });
+      fs.writeFileSync(ALIASES_FILE, `${JSON.stringify({ aliases: DEFAULT_ALIASES }, null, 2)}\n`, { mode: 0o600 });
+    } else console.error(`[aliases] ${ALIASES_FILE}: ${err.message}`);
+    return DEFAULT_ALIASES;
+  }
+  const seen = new Set();
+  const list = [];
+  for (const item of Array.isArray(data) ? data : data?.aliases || []) {
+    const name = typeof item === 'string' ? item : item?.name;
+    if (typeof name !== 'string' || !ALIAS_RE.test(name) || seen.has(name)) continue;
+    seen.add(name);
+    const description = typeof item?.description === 'string' ? item.description.slice(0, 200) : '';
+    list.push({ name, description });
+  }
+  return list.length ? list : DEFAULT_ALIASES;
+}
+
 const SHELLS = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'ksh', 'login', '-bash', '-zsh']);
 
 function cleanEnv() {
@@ -53,7 +81,7 @@ function validName(name) {
 }
 
 async function list() {
-  const fmt = ['#{session_name}', '#{session_created}', '#{session_activity}', '#{session_attached}', '#{pane_current_path}', '#{pane_current_command}', '#{@cpm_project}', '#{@cpm_kind}', '#{@cpm_state}'].join('\t');
+  const fmt = ['#{session_name}', '#{session_created}', '#{session_activity}', '#{session_attached}', '#{pane_current_path}', '#{pane_current_command}', '#{@cpm_project}', '#{@cpm_kind}', '#{@cpm_state}', '#{@cpm_title}', '#{@cpm_alias}'].join('\t');
   let out;
   try {
     out = await tmux(['list-sessions', '-F', fmt]);
@@ -65,11 +93,13 @@ async function list() {
     .split('\n')
     .filter(Boolean)
     .map((line) => {
-      const [name, created, activity, attached, cwd, command, project, kind, state] = line.split('\t');
+      const [name, created, activity, attached, cwd, command, project, kind, state, title, alias] = line.split('\t');
       return {
         name,
         project: project || null,
         kind: kind || null,
+        title: title || null,
+        alias: alias || null,
         created: Number(created) * 1000,
         activity: Number(activity) * 1000,
         attached: Number(attached),
@@ -99,15 +129,36 @@ async function nextName(project) {
   for (let i = 1; ; i++) if (!taken.has(`${slug}-${i}`)) return `${slug}-${i}`;
 }
 
-async function create({ project, cwd, command }) {
-  if (!Object.hasOwn(COMMANDS, command)) throw new Error('Lệnh không hợp lệ');
+// command: 'claude' | 'shell' ('claude-bypass' = claude + bypass, giữ cho tương thích).
+async function create({ project, cwd, command, alias, bypass }) {
+  if (!COMMANDS.includes(command)) throw new Error('Lệnh không hợp lệ');
+  if (command === 'claude-bypass') bypass = true;
+  const isClaude = command !== 'shell';
+  const names = aliases().map((a) => a.name);
+  alias = isClaude ? alias || names[0] : '';
+  if (isClaude && !names.includes(alias)) throw new Error(`Alias "${alias}" không có trong ${ALIASES_FILE}`);
+  const kind = isClaude ? (bypass ? 'claude-bypass' : 'claude') : 'shell';
   const name = await nextName(project);
-  // Gắn tên dự án và loại phiên vào chính session tmux, để restart web vẫn biết phiên thuộc dự án nào.
-  await tmux(['new-session', '-d', '-s', name, '-c', cwd, '-x', '160', '-y', '45', ';', 'set-option', '@cpm_project', project, ';', 'set-option', '@cpm_kind', command]);
-  // Mở shell trước rồi mới gõ lệnh, để .bashrc (PATH tới claude) được nạp
+  // Gắn tên dự án, loại phiên, alias vào chính session tmux, để restart web vẫn biết phiên thuộc dự án nào.
+  await tmux([
+    'new-session', '-d', '-s', name, '-c', cwd, '-x', '160', '-y', '45', ...(isClaude ? ['-e', CLAUDE_ENV] : []),
+    ';', 'set-option', '@cpm_project', project, ';', 'set-option', '@cpm_kind', kind, ';', 'set-option', '@cpm_alias', alias,
+  ]);
+  // Mở shell trước rồi mới gõ lệnh, để .bashrc/.zshrc (PATH tới claude, alias) được nạp
   // và khi thoát claude thì phiên vẫn còn shell để dùng tiếp.
-  if (COMMANDS[command]) await tmux(['send-keys', '-t', `=${name}:`, COMMANDS[command], 'Enter']);
-  return { name, project, kind: command, cwd };
+  if (isClaude) {
+    // bypass: Claude tự chạy mọi lệnh mà không hỏi; mặc định là auto mode.
+    const mode = bypass ? '--dangerously-skip-permissions' : '--permission-mode auto';
+    await tmux(['send-keys', '-t', `=${name}:`, `${alias} ${mode} ${HOOKS}`, 'Enter']);
+  }
+  return { name, project, kind, alias, cwd };
+}
+
+// Tên hiển thị do anh đặt (lưu ở @cpm_title); tên tmux giữ nguyên vì tab, hàng đợi dựa vào nó. Rỗng = về tên mặc định.
+async function setTitle(name, title) {
+  if (typeof title !== 'string' || title.length > 60) throw new Error('Tên không hợp lệ');
+  title = title.trim();
+  await tmux(title ? ['set-option', '-t', `=${name}:`, '@cpm_title', title] : ['set-option', '-u', '-t', `=${name}:`, '@cpm_title']);
 }
 
 async function kill(name) {
@@ -149,4 +200,4 @@ function attach(name, cols, rows) {
   });
 }
 
-module.exports = { SOCKET, validName, list, exists, create, kill, history, setState, sendText, attach };
+module.exports = { SOCKET, validName, aliases, list, exists, create, setTitle, kill, history, setState, sendText, attach };

@@ -2,7 +2,7 @@
 
 /* global Terminal, FitAddon */
 
-import { $, el, api, store, projectUrl, timeAgo, toast, confirmDialog, followJob, isTouch, isNarrow } from './common.js';
+import { $, el, api, store, projectUrl, timeAgo, toast, confirmDialog, inputDialog, followJob, isTouch, isNarrow } from './common.js';
 import { initFiles, setFilesProject, load as loadFiles } from './files.js';
 import { initGit, setGitProject, load as loadGit } from './gitpanel.js';
 
@@ -268,10 +268,25 @@ async function refreshSessions() {
   return true;
 }
 
+// Tên mặc định "Claude 2"/"Terminal 1", hoặc tên anh tự đặt; phiên chạy alias khác claude thì thêm "(alias)".
 function sessionLabel(s) {
   const n = s.name.slice(s.name.lastIndexOf('-') + 1);
-  const kind = { shell: 'Terminal', 'claude-bypass': '⚠ Claude' }[s.kind] || 'Claude';
-  return `${kind} ${n}`;
+  const base = s.title || `${s.kind === 'shell' ? 'Terminal' : 'Claude'} ${n}`;
+  const warn = s.kind === 'claude-bypass' ? '⚠ ' : '';
+  const alias = s.alias && s.alias !== 'claude' ? ` (${s.alias})` : '';
+  return `${warn}${base}${alias}`;
+}
+
+async function renameSession(s) {
+  const n = s.name.slice(s.name.lastIndexOf('-') + 1);
+  const title = await inputDialog('Đổi tên phiên (để trống = tên mặc định)', s.title || `${s.kind === 'shell' ? 'Terminal' : 'Claude'} ${n}`, 'Đổi tên');
+  if (title === null) return;
+  try {
+    await api('PATCH', `/api/sessions/${encodeURIComponent(s.name)}`, { title });
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+  refreshSessions();
 }
 
 const STATE_TITLE = { busy: 'Claude đang chạy', sent: 'Claude đang chạy', idle: 'Claude đã xong', waiting: 'Claude chờ cho phép', ended: 'Claude đã thoát' };
@@ -305,8 +320,9 @@ function renderSessions() {
     },
     el('span', { class: 'session-name', text: `${sessionLabel(s)}${tabs.has(s.name) ? '' : ' (đang ẩn)'}` }),
     el('span', { class: 'session-meta', text: `${s.name} · ${s.command} · hoạt động ${timeAgo(s.activity)}` }));
+    const rename = el('button', { class: 'icon-btn small', title: 'Đổi tên', 'aria-label': `Đổi tên ${sessionLabel(s)}`, text: '✎', onclick: () => renameSession(s) });
     const kill = el('button', { class: 'danger-link', text: 'Kết thúc', onclick: () => confirmKill(s) });
-    sessionListEl.append(el('li', { class: `session-item${s.name === active ? ' active' : ''}` }, info, kill));
+    sessionListEl.append(el('li', { class: `session-item${s.name === active ? ' active' : ''}` }, info, rename, kill));
   }
 }
 
@@ -323,28 +339,49 @@ async function confirmKill(s) {
 }
 
 // Mở phiên mới: chọn Claude (auto mode) hoặc Terminal.
-// Bấm giữ (hoặc chuột phải) nút Claude để hiện thêm lựa chọn bypass permissions.
+// Bấm giữ (hoặc chuột phải) nút Claude để chọn alias Claude và bật bypass permissions.
 const dlgNew = $('#dlg-new');
 const newClaudeBtn = $('#new-claude');
-const bypassBox = $('#new-bypass');
-const COMMANDS = ['claude', 'claude-bypass', 'shell'];
+const advancedBox = $('#new-advanced');
+const aliasSelect = $('#new-alias');
+const bypassInput = $('#new-bypass');
 let holdTimer = null;
 let held = false;
 
+async function loadAliases() {
+  try {
+    const { aliases } = await api('GET', '/api/claude-aliases');
+    aliasSelect.replaceChildren(...aliases.map((a) => el('option', { value: a.name, text: a.description ? `${a.name} — ${a.description}` : a.name })));
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+function syncBypass() {
+  $('#new-bypass-warn').hidden = !bypassInput.checked;
+  advancedBox.classList.toggle('danger', bypassInput.checked);
+  $('#new-custom').className = bypassInput.checked ? 'danger-btn' : 'primary-btn';
+  $('#new-custom').textContent = bypassInput.checked ? '⚠ Mở Claude (bypass permissions)' : 'Mở Claude';
+}
+bypassInput.addEventListener('change', syncBypass);
+
 $('#btn-new').addEventListener('click', () => {
   dlgNew.returnValue = '';
-  bypassBox.hidden = true;
+  advancedBox.hidden = true;
+  bypassInput.checked = false;
+  syncBypass();
   dlgNew.showModal();
 });
-function showBypass() {
+function showAdvanced() {
   held = true;
-  bypassBox.hidden = false;
+  advancedBox.hidden = false;
   navigator.vibrate?.(30);
+  loadAliases();
 }
 newClaudeBtn.addEventListener('pointerdown', () => {
   held = false;
   clearTimeout(holdTimer);
-  holdTimer = setTimeout(showBypass, 600);
+  holdTimer = setTimeout(showAdvanced, 600);
 });
 for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) {
   newClaudeBtn.addEventListener(ev, () => clearTimeout(holdTimer));
@@ -352,7 +389,7 @@ for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) {
 newClaudeBtn.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   clearTimeout(holdTimer);
-  showBypass();
+  showAdvanced();
 });
 // Thả tay sau khi bấm giữ thì không mở phiên Claude thường.
 newClaudeBtn.addEventListener('click', (e) => {
@@ -362,10 +399,13 @@ newClaudeBtn.addEventListener('click', (e) => {
   }
 });
 dlgNew.addEventListener('close', async () => {
-  const command = dlgNew.returnValue;
-  if (!COMMANDS.includes(command)) return;
+  const choice = dlgNew.returnValue;
+  let body;
+  if (choice === 'claude' || choice === 'shell') body = { command: choice };
+  else if (choice === 'claude-custom') body = { command: 'claude', alias: aliasSelect.value || undefined, bypass: bypassInput.checked };
+  else return;
   try {
-    const created = await api('POST', projectUrl(project, '/sessions'), { command });
+    const created = await api('POST', projectUrl(project, '/sessions'), body);
     await refreshSessions();
     openTab(created.name);
   } catch (err) {
