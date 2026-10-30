@@ -22,6 +22,8 @@ Luồng dùng: đăng nhập → chọn dự án → mở nhiều tab (mỗi tab
 
 ## Cài trên server
 
+Hướng dẫn đầy đủ từng bước, kèm xử lý sự cố: [DEPLOY.md](DEPLOY.md). Tóm tắt:
+
 ```bash
 # 1 lần, bằng root: cho service của user chạy cả khi chưa đăng nhập
 loginctl enable-linger tientieu
@@ -58,7 +60,7 @@ Host lạ được tự chấp nhận lần đầu (`StrictHostKeyChecking=accep
 | Đổi mật khẩu web | `npm run set-password` rồi `systemctl --user restart claude-prompt-manager` |
 | Xem log | `journalctl --user -u claude-prompt-manager -f` |
 | Vào phiên từ SSH | `tmux -L cpm ls`, `tmux -L cpm attach -t <tên>` (thoát: `Ctrl+b d`) |
-| Đổi thư mục dự án / giới hạn upload | thêm `Environment=PROJECTS_DIR=...` / `MAX_UPLOAD_MB=...` vào service |
+| Domain, giới hạn upload, thư mục dự án | ghi `ALLOWED_ORIGINS=...`, `MAX_UPLOAD_MB=...`, `PROJECTS_DIR=...` vào `~/.config/claude-prompt-manager.env` rồi restart |
 | Đổi cổng/giới hạn RAM | sửa `deploy/claude-prompt-manager.service` rồi chạy lại `install.sh` |
 
 Chạy thử ở máy cá nhân (không HTTPS): `COOKIE_SECURE=0 npm start`.

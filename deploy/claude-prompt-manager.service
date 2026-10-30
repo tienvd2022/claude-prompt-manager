@@ -11,6 +11,8 @@ Environment=HOST=127.0.0.1
 Environment=PORT=4777
 Environment=TRUST_PROXY=1
 Environment=PROJECTS_DIR=%h/projects
+# Cấu hình riêng của server (ALLOWED_ORIGINS, MAX_UPLOAD_MB...), nằm ngoài repo. Dấu - là không bắt buộc có.
+EnvironmentFile=-%h/.config/claude-prompt-manager.env
 Restart=always
 RestartSec=3
 # Restart web không được giết tmux: các phiên Claude phải chạy tiếp.
