@@ -499,3 +499,4 @@ dialog label.inline input { width: auto; }
 .browse-recent-text { display: grid; gap: 2px; min-width: 0; }
 #browse-recent.active { border-color: var(--accent); }
 .pre-line { white-space: pre-line; overflow-wrap: anywhere; }
+.dlg-actions .push-left { margin-right: auto; }
