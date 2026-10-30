@@ -295,11 +295,12 @@ function renderTabLabels() {
   for (const tab of tabs.values()) {
     const s = sessions.find((x) => x.name === tab.name);
     if (!s) continue;
-    tab.labelEl.replaceChildren(
+    // replaceChildren không tự bỏ null như el(), nên lọc trước (không thì hiện chữ "null").
+    tab.labelEl.replaceChildren(...[
       s.state ? el('span', { class: `tab-dot ${s.state}`, title: STATE_TITLE[s.state] || '' }) : null,
       sessionLabel(s),
       s.queued ? el('span', { class: 'tab-queued', title: `${s.queued} prompt đang chờ`, text: `⏳${s.queued}` }) : null,
-    );
+    ].filter(Boolean));
   }
 }
 
