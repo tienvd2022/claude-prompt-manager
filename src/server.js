@@ -288,7 +288,7 @@ route('POST', '/api/projects/:p/sessions', async (req, res, p) => {
   const body = await readJson(req);
   const cwd = projects.projectDir(p);
   try {
-    sendJson(res, 201, await tmux.create({ project: p, cwd, command: body.command || 'claude', alias: body.alias, bypass: body.bypass === true, prepare: browser.prepare }));
+    sendJson(res, 201, await tmux.create({ project: p, cwd, command: body.command || 'claude', alias: body.alias, bypass: body.bypass === true, args: body.args, prepare: browser.prepare }));
   } catch (err) {
     throw projects.httpError(400, err.stderr?.trim() || err.message);
   }
