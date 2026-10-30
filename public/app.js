@@ -500,6 +500,8 @@ dlgNew.addEventListener('close', async () => {
   else return;
   try {
     const created = await api('POST', projectUrl(project, '/sessions'), body);
+    // Tên phiên được dùng lại sau khi phiên cũ kết thúc: phiên mới không mang lịch sử prompt của phiên cũ.
+    store.remove(historyKey(created.name));
     await refreshSessions();
     openTab(created.name);
   } catch (err) {
@@ -819,18 +821,23 @@ function setFont(size) {
 
 renderKeybar();
 
-// Lịch sử các prompt đã gửi từ ô prompt (lưu trên trình duyệt này, mới nhất trước).
+// Lịch sử các prompt đã gửi từ ô prompt, riêng từng phiên (lưu trên trình duyệt này, mới nhất trước).
 const HISTORY_MAX = 100;
+const historyKey = (name) => `cpm.promptHistory.${name}`;
+store.remove('cpm.promptHistory'); // lịch sử chung kiểu cũ, không biết của phiên nào
 
-function rememberPrompt(text) {
-  const list = store.get('cpm.promptHistory', []).filter((t) => t !== text);
+function rememberPrompt(name, text) {
+  const list = store.get(historyKey(name), []).filter((t) => t !== text);
   list.unshift(text);
-  store.set('cpm.promptHistory', list.slice(0, HISTORY_MAX));
+  store.set(historyKey(name), list.slice(0, HISTORY_MAX));
 }
 
 function showHistory() {
+  if (!active) return toast('Mở một phiên trước (bấm ＋)', 'error');
   const dlg = $('#dlg-history');
-  const list = store.get('cpm.promptHistory', []);
+  const s = activeSession();
+  $('h2', dlg).textContent = `Lịch sử prompt · ${s ? sessionLabel(s) : active}`;
+  const list = store.get(historyKey(active), []);
   const listEl = $('#history-list');
   listEl.replaceChildren(...list.map((text) => el('li', {}, el('button', {
     type: 'button',
@@ -843,12 +850,13 @@ function showHistory() {
       promptInput.focus();
     },
   }))));
-  if (!list.length) listEl.append(el('li', { class: 'muted small', text: 'Chưa có prompt nào.' }));
+  if (!list.length) listEl.append(el('li', { class: 'muted small', text: 'Phiên này chưa gửi prompt nào.' }));
   dlg.showModal();
 }
 $('#history-clear').addEventListener('click', async () => {
   $('#dlg-history').close();
-  if (await confirmDialog('Xóa toàn bộ lịch sử prompt trên trình duyệt này?', 'Xóa')) store.set('cpm.promptHistory', []);
+  const name = active;
+  if (name && (await confirmDialog('Xóa lịch sử prompt của phiên này?', 'Xóa'))) store.remove(historyKey(name));
 });
 
 // Xem nội dung phiên dạng chữ thường: chọn/copy bằng thao tác bình thường của trình duyệt,
@@ -1015,7 +1023,7 @@ promptForm.addEventListener('submit', (e) => {
     return;
   }
   if (!text) return;
-  rememberPrompt(text);
+  rememberPrompt(tab.name, text);
   // Dán theo kiểu bracketed paste để xuống dòng không bị hiểu là Enter, rồi mới gửi Enter.
   send(tab, text.includes('\n') ? `\x1b[200~${text}\x1b[201~` : text);
   setTimeout(() => send(tab, '\r'), 80);
@@ -1030,7 +1038,7 @@ $('#prompt-queue').addEventListener('click', async () => {
   if (!text.trim()) return showQueue();
   try {
     const { items } = await api('POST', queueUrl(s.name), { text });
-    rememberPrompt(text);
+    rememberPrompt(s.name, text);
     promptInput.value = '';
     autoGrow();
     toast(s.state === 'idle' ? 'Claude đang rảnh, gửi ngay' : `Đã xếp hàng (${items.length} prompt đang chờ)`);

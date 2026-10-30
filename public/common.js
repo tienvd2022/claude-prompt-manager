@@ -35,6 +35,13 @@ export const store = {
       // trình duyệt chặn storage thì bỏ qua
     }
   },
+  remove(key) {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // như trên
+    }
+  },
 };
 
 export async function api(method, url, body) {
