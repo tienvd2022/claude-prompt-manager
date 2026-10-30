@@ -7,6 +7,7 @@ import { attachTouch } from './touchterm.js';
 import { initFiles, setFilesProject, load as loadFiles, download } from './files.js';
 import { initPreview, setPreviewProject, openPreview, togglePreview } from './preview.js';
 import { initSketch, openSketch } from './sketch.js';
+import { initSlash } from './slash.js';
 import { initGit, setGitProject, load as loadGit } from './gitpanel.js';
 import { openBrowser } from './browserview.js';
 import { accounts as gitAccounts, checkAccount, aliasUrl, urlHost, fillAccountSelect, whoText, renderAccounts, initGitAccounts } from './gitaccounts.js';
@@ -1266,6 +1267,12 @@ initPreview({
     if (barEls.preview) barEls.preview.textContent = on ? '👁•' : '👁';
   },
   onLayout: () => requestAnimationFrame(() => tabs.get(active) && safeFit(tabs.get(active))),
+});
+initSlash({
+  context: () => {
+    const s = activeSession();
+    return project && s && s.kind !== 'shell' ? { project, alias: s.alias } : null;
+  },
 });
 initGit();
 fitViewport();

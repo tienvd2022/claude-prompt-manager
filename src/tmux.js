@@ -31,7 +31,8 @@ const CLAUDE_ENV = 'CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1';
 // Các alias Claude đã khai báo sẵn trong shell của server (vd claude-fami), liệt kê trong data/claude-aliases.json:
 //   { "default": "claude-fami", "aliases": [{ "name": "claude", "description": "Tài khoản cá nhân" }, "claude-fami"] }
 // Mỗi mục là tên alias hoặc { name, description }. "default" là alias dùng khi bấm nút Claude thường
-// (không có thì lấy mục đầu). Đọc lại mỗi lần để sửa file không cần restart.
+// (không có thì lấy mục đầu). "configDir" (tùy chọn) là CLAUDE_CONFIG_DIR của alias, để gợi ý đúng skill khi gõ "/"
+// (không ghi thì đoán: claude-fami -> ~/.claude-fami). Đọc lại mỗi lần để sửa file không cần restart.
 const ALIASES_FILE = path.join(__dirname, '..', 'data', 'claude-aliases.json');
 const ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const DEFAULT_ALIASES = [{ name: 'claude', description: '', default: true }];
@@ -54,7 +55,8 @@ function aliases() {
     if (typeof name !== 'string' || !ALIAS_RE.test(name) || seen.has(name)) continue;
     seen.add(name);
     const description = typeof item?.description === 'string' ? item.description.slice(0, 200) : '';
-    list.push({ name, description, default: false });
+    const configDir = typeof item?.configDir === 'string' ? item.configDir : undefined; // thư mục cấu hình (skill, plugin) của alias
+    list.push({ name, description, configDir, default: false });
   }
   if (!list.length) return DEFAULT_ALIASES;
   (list.find((a) => a.name === data?.default) || list[0]).default = true;
