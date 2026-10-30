@@ -84,7 +84,7 @@ function validName(name) {
 }
 
 async function list() {
-  const fmt = ['#{session_name}', '#{session_created}', '#{session_activity}', '#{session_attached}', '#{pane_current_path}', '#{pane_current_command}', '#{@cpm_project}', '#{@cpm_kind}', '#{@cpm_state}', '#{@cpm_title}', '#{@cpm_alias}'].join('\t');
+  const fmt = ['#{session_name}', '#{session_created}', '#{session_activity}', '#{session_attached}', '#{pane_current_path}', '#{pane_current_command}', '#{@cpm_project}', '#{@cpm_kind}', '#{@cpm_state}', '#{@cpm_title}', '#{@cpm_alias}', '#{@cpm_browser}'].join('\t');
   let out;
   try {
     out = await tmux(['list-sessions', '-F', fmt]);
@@ -96,13 +96,14 @@ async function list() {
     .split('\n')
     .filter(Boolean)
     .map((line) => {
-      const [name, created, activity, attached, cwd, command, project, kind, state, title, alias] = line.split('\t');
+      const [name, created, activity, attached, cwd, command, project, kind, state, title, alias, browser] = line.split('\t');
       return {
         name,
         project: project || null,
         kind: kind || null,
         title: title || null,
         alias: alias || null,
+        browser: Number(browser) || null,
         created: Number(created) * 1000,
         activity: Number(activity) * 1000,
         attached: Number(attached),
@@ -133,7 +134,8 @@ async function nextName(project) {
 }
 
 // command: 'claude' | 'shell' ('claude-bypass' = claude + bypass, giữ cho tương thích).
-async function create({ project, cwd, command, alias, bypass }) {
+// prepare(name): chuẩn bị thêm cho phiên Claude (trình duyệt riêng), trả về { port, mcpConfig, prompt, env } hoặc null.
+async function create({ project, cwd, command, alias, bypass, prepare }) {
   if (!COMMANDS.includes(command)) throw new Error('Lệnh không hợp lệ');
   if (command === 'claude-bypass') bypass = true;
   const isClaude = command !== 'shell';
@@ -142,19 +144,30 @@ async function create({ project, cwd, command, alias, bypass }) {
   if (isClaude && !list.some((a) => a.name === alias)) throw new Error(`Alias "${alias}" không có trong ${ALIASES_FILE}`);
   const kind = isClaude ? (bypass ? 'claude-bypass' : 'claude') : 'shell';
   const name = await nextName(project);
+  let extra = null;
+  if (isClaude && prepare) {
+    try {
+      extra = await prepare(name);
+    } catch (err) {
+      console.error(`[tmux] chuẩn bị trình duyệt cho ${name} lỗi: ${err.message}`);
+    }
+  }
+  const env = extra ? Object.entries(extra.env).flatMap(([k, v]) => ['-e', `${k}=${v}`]) : [];
   // Gắn tên dự án, loại phiên, alias vào chính session tmux, để restart web vẫn biết phiên thuộc dự án nào.
   await tmux([
-    'new-session', '-d', '-s', name, '-c', cwd, '-x', '160', '-y', '45', ...(isClaude ? ['-e', CLAUDE_ENV] : []),
+    'new-session', '-d', '-s', name, '-c', cwd, '-x', '160', '-y', '45', ...(isClaude ? ['-e', CLAUDE_ENV] : []), ...env,
     ';', 'set-option', '@cpm_project', project, ';', 'set-option', '@cpm_kind', kind, ';', 'set-option', '@cpm_alias', alias,
+    ...(extra ? [';', 'set-option', '@cpm_browser', String(extra.port)] : []),
   ]);
   // Mở shell trước rồi mới gõ lệnh, để .bashrc/.zshrc (PATH tới claude, alias) được nạp
   // và khi thoát claude thì phiên vẫn còn shell để dùng tiếp.
   if (isClaude) {
     // bypass: Claude tự chạy mọi lệnh mà không hỏi; mặc định là auto mode.
     const mode = bypass ? '--dangerously-skip-permissions' : '--permission-mode auto';
-    await tmux(['send-keys', '-t', `=${name}:`, `${alias} ${mode} ${HOOKS}`, 'Enter']);
+    const browser = extra ? ` --mcp-config ${shq(extra.mcpConfig)} --append-system-prompt ${shq(extra.prompt)}` : '';
+    await tmux(['send-keys', '-t', `=${name}:`, `${alias} ${mode} ${HOOKS}${browser}`, 'Enter']);
   }
-  return { name, project, kind, alias, cwd };
+  return { name, project, kind, alias, cwd, browser: extra?.port || null };
 }
 
 // Tên hiển thị do anh đặt (lưu ở @cpm_title); tên tmux giữ nguyên vì tab, hàng đợi dựa vào nó. Rỗng = về tên mặc định.

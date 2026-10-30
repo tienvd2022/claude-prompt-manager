@@ -5,6 +5,7 @@
 import { $, el, api, store, projectUrl, timeAgo, toast, confirmDialog, inputDialog, followJob, isTouch, isNarrow, nativeApp } from './common.js';
 import { initFiles, setFilesProject, load as loadFiles } from './files.js';
 import { initGit, setGitProject, load as loadGit } from './gitpanel.js';
+import { openBrowser } from './browserview.js';
 
 const viewProjects = $('#view-projects');
 const viewWorkspace = $('#view-workspace');
@@ -716,6 +717,7 @@ const BAR_BUTTONS = {
   history: { label: '🕘', title: 'Lịch sử prompt', run: () => showHistory() },
   queue: { label: '📋', title: 'Hàng đợi prompt', run: () => showQueue() },
   text: { label: '📄', title: 'Xem/copy nội dung dạng chữ', run: () => showText() },
+  browser: { label: '🌐', title: 'Xem trình duyệt của phiên (Claude test web ở đây)', run: () => showBrowser() },
   'shift-tab': keyBtn('⇧Tab', 'Shift+Tab (đổi chế độ Claude)', 'shift-tab'),
   'font-down': { label: 'A−', title: 'Chữ nhỏ hơn', run: () => setFont(fontSize - 1) },
   'font-up': { label: 'A+', title: 'Chữ to hơn', run: () => setFont(fontSize + 1) },
@@ -914,6 +916,12 @@ const dlgQueue = $('#dlg-queue');
 const queueUrl = (name) => `/api/sessions/${encodeURIComponent(name)}/queue`;
 let queueItems = [];
 let queueOf = null;
+
+function showBrowser() {
+  const s = activeSession();
+  if (!s) return toast('Mở một phiên trước (bấm ＋)', 'error');
+  openBrowser(s.name, sessionLabel(s));
+}
 
 function activeSession() {
   return sessions.find((s) => s.name === active);
