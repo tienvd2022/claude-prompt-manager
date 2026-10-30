@@ -356,6 +356,11 @@ dialog .job { margin: 0; }
 .prompt-form { display: flex; gap: 6px; align-items: flex-end; }
 .prompt-form textarea { resize: none; min-height: 38px; max-height: 160px; }
 .prompt-form button { height: 38px; }
+.prompt-tools { display: contents; }
+.prompt-tools > #prompt-queue { order: 1; } /* màn rộng: ⏳ nằm sau ô prompt như cũ */
+.prompt-form > textarea { order: 0; }
+.prompt-form > [type=submit] { order: 2; }
+.prompt-more, .pt-label { display: none; }
 
 dialog {
   background: var(--panel);
@@ -479,6 +484,15 @@ dialog label.inline input { width: auto; }
 
 @media (max-width: 760px) {
   #btn-new { padding: 6px 12px; }
+  .prompt-form { position: relative; }
+  .prompt-more { display: block; flex: none; width: 38px; padding: 0; border: 1px solid var(--border); border-radius: 50%; font-size: 20px; }
+  .prompt-more[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  .prompt-tools { display: none; position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 20; flex-direction: column; min-width: 220px; padding: 4px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 -6px 20px rgba(0, 0, 0, .35); }
+  .prompt-tools.open { display: flex; }
+  .prompt-tools > button, .prompt-tools > #prompt-queue { order: 0; display: flex; align-items: center; gap: 10px; height: 44px; width: 100%; padding: 0 10px;
+    background: transparent; border: 0; text-align: left; font-size: 18px; }
+  .prompt-tools .pt-label { display: inline; font-size: 15px; color: var(--text); }
   .hide-narrow, .project-title { display: none; }
   .sidebar-title { display: block; }
   .sidebar {
