@@ -109,24 +109,14 @@
           <div id="status" class="status" hidden></div>
 
           <div id="mobile-bar" class="mobile-bar">
-            <div class="keys">
-              <button data-key="esc">Esc</button>
-              <button data-key="tab">Tab</button>
-              <button data-key="shift-tab">⇧Tab</button>
-              <button data-key="up">↑</button>
-              <button data-key="down">↓</button>
-              <button data-key="left">←</button>
-              <button data-key="right">→</button>
-              <button data-key="ctrl-c">^C</button>
-              <button data-key="enter">⏎</button>
-              <button id="font-down" title="Chữ nhỏ hơn">A−</button>
-              <button id="font-up" title="Chữ to hơn">A+</button>
-            </div>
+            <!-- Các nút do app.js vẽ theo cấu hình người dùng (nút ⋯ để sửa) -->
+            <div id="keybar" class="keys"></div>
             <form id="prompt-form" class="prompt-form">
               <button type="button" id="prompt-attach" class="icon-btn" title="Đính kèm ảnh" aria-label="Đính kèm ảnh">📎</button>
               <input id="prompt-image" type="file" accept="image/*" multiple hidden>
               <!-- Không đặt autocomplete="off": Chrome Android sẽ báo bàn phím tắt gợi ý, Gboard ẩn luôn nút mic -->
               <textarea id="prompt-input" name="prompt" rows="1" placeholder="Gõ prompt… (dán ảnh được, Ctrl/⌘+Enter để gửi)" autocapitalize="sentences"></textarea>
+              <button type="button" id="prompt-queue" title="Thêm vào hàng đợi (tự gửi khi Claude xong)" aria-label="Thêm vào hàng đợi">⏳</button>
               <button type="submit" class="primary-btn">Gửi</button>
             </form>
           </div>
@@ -209,6 +199,41 @@
         <button value="delete" class="danger-btn">Xóa</button>
       </div>
       <div class="dlg-actions"><button value="cancel">Đóng</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-keybar">
+    <form method="dialog">
+      <h2>Thanh phím</h2>
+      <p class="muted small">Bỏ chọn để ẩn, dùng ↑ ↓ để đổi thứ tự.</p>
+      <ul id="keybar-edit" class="keybar-edit"></ul>
+      <div class="dlg-actions">
+        <button type="button" id="keybar-reset">Mặc định</button>
+        <button value="close" class="primary-btn">Xong</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-history">
+    <form method="dialog">
+      <h2>Lịch sử prompt</h2>
+      <ul id="history-list" class="history-list"></ul>
+      <div class="dlg-actions">
+        <button type="button" id="history-clear" class="danger-btn">Xóa hết</button>
+        <button value="close">Đóng</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-queue">
+    <form method="dialog">
+      <h2>Hàng đợi prompt</h2>
+      <p id="queue-state" class="muted small"></p>
+      <ul id="queue-list" class="history-list"></ul>
+      <div class="dlg-actions">
+        <button type="button" id="queue-next" title="Gửi prompt đầu hàng ngay, không chờ Claude báo xong (dùng khi hàng đợi kẹt, ví dụ sau khi bấm Esc)">Gửi tiếp ngay</button>
+        <button value="close">Đóng</button>
+      </div>
     </form>
   </dialog>
 

@@ -217,7 +217,7 @@ async function openProject(name) {
   const last = store.get(`cpm.active.${name}`, null);
   if (last && tabs.has(last)) activate(last);
   emptyEl.hidden = tabs.size > 0;
-  refreshTimer = setInterval(refreshSessions, 10000);
+  refreshTimer = setInterval(() => document.visibilityState === 'visible' && refreshSessions(), 3000);
 }
 
 function closeProject() {
@@ -258,6 +258,9 @@ async function refreshSessions() {
     return false;
   }
   renderSessions();
+  renderTabLabels();
+  updateQueueBadge();
+  if (queueOf && dlgQueue.open) loadQueue();
   // Tab của phiên đã bị tắt ở nơi khác thì đóng lại.
   for (const name of [...tabs.keys()]) {
     if (!sessions.some((s) => s.name === name)) closeTab(name);
@@ -269,6 +272,20 @@ function sessionLabel(s) {
   const n = s.name.slice(s.name.lastIndexOf('-') + 1);
   const kind = { shell: 'Terminal', 'claude-bypass': '⚠ Claude' }[s.kind] || 'Claude';
   return `${kind} ${n}`;
+}
+
+const STATE_TITLE = { busy: 'Claude đang chạy', sent: 'Claude đang chạy', idle: 'Claude đã xong', waiting: 'Claude chờ cho phép', ended: 'Claude đã thoát' };
+
+function renderTabLabels() {
+  for (const tab of tabs.values()) {
+    const s = sessions.find((x) => x.name === tab.name);
+    if (!s) continue;
+    tab.labelEl.replaceChildren(
+      s.state ? el('span', { class: `tab-dot ${s.state}`, title: STATE_TITLE[s.state] || '' }) : null,
+      sessionLabel(s),
+      s.queued ? el('span', { class: 'tab-queued', title: `${s.queued} prompt đang chờ`, text: `⏳${s.queued}` }) : null,
+    );
+  }
 }
 
 function renderSessions() {
@@ -398,10 +415,17 @@ function openTab(name) {
   const tabEl = el('div', { class: 'tab' }, label, close);
   tabsEl.append(tabEl);
 
-  const tab = { name, el: elTerm, tabEl, term, fit, ws: null, retry: 0, closed: false, timer: null };
+  const tab = { name, el: elTerm, tabEl, labelEl: label, term, fit, ws: null, retry: 0, closed: false, timer: null };
   tabs.set(name, tab);
+  renderTabLabels();
 
-  term.onData((data) => send(tab, data));
+  term.onData((data) => {
+    if (ctrlArmed) {
+      armCtrl(false);
+      data = withCtrl(data);
+    }
+    send(tab, data);
+  });
   term.onResize(({ cols, rows }) => {
     if (tab.ws?.readyState === WebSocket.OPEN) tab.ws.send(JSON.stringify({ type: 'resize', cols, rows }));
   });
@@ -429,6 +453,7 @@ function activate(name) {
     updateStatus(tab);
   }
   renderSessions();
+  updateQueueBadge();
   if (project) store.set(`cpm.active.${project}`, name);
 }
 
@@ -536,12 +561,111 @@ function updateStatus(tab) {
 
 // ---------- Thanh phím + ô prompt (tiện cho điện thoại) ----------
 
-document.querySelectorAll('[data-key]').forEach((btn) => {
-  btn.addEventListener('click', () => {
-    send(tabs.get(active), KEYS[btn.dataset.key]);
-    if (!isTouch) tabs.get(active)?.term.focus();
-  });
+// Mỗi nút trên thanh phím: nhãn, mô tả (hiện trong màn sửa) và việc cần làm khi bấm.
+const keyBtn = (label, title, key) => ({ label, title, key });
+const BAR_BUTTONS = {
+  esc: keyBtn('Esc', 'Esc', 'esc'),
+  tab: keyBtn('Tab', 'Tab', 'tab'),
+  up: keyBtn('↑', 'Mũi tên lên', 'up'),
+  down: keyBtn('↓', 'Mũi tên xuống', 'down'),
+  left: keyBtn('←', 'Mũi tên trái', 'left'),
+  right: keyBtn('→', 'Mũi tên phải', 'right'),
+  'ctrl-c': keyBtn('^C', 'Ctrl+C', 'ctrl-c'),
+  ctrl: { label: 'Ctrl', title: 'Giữ Ctrl cho phím gõ tiếp theo', run: () => armCtrl(!ctrlArmed) },
+  enter: keyBtn('⏎', 'Enter', 'enter'),
+  history: { label: '🕘', title: 'Lịch sử prompt', run: () => showHistory() },
+  queue: { label: '📋', title: 'Hàng đợi prompt', run: () => showQueue() },
+  'shift-tab': keyBtn('⇧Tab', 'Shift+Tab (đổi chế độ Claude)', 'shift-tab'),
+  'font-down': { label: 'A−', title: 'Chữ nhỏ hơn', run: () => setFont(fontSize - 1) },
+  'font-up': { label: 'A+', title: 'Chữ to hơn', run: () => setFont(fontSize + 1) },
+};
+const BAR_DEFAULT = Object.keys(BAR_BUTTONS);
+const keybarEl = $('#keybar');
+
+// Cấu hình lưu dạng [{ id, show }]; nút mới thêm sau này tự hiện ở cuối.
+function loadKeybar() {
+  const saved = store.get('cpm.keybar', null);
+  const list = Array.isArray(saved) ? saved.filter((b) => BAR_BUTTONS[b?.id]) : [];
+  for (const id of BAR_DEFAULT) if (!list.some((b) => b.id === id)) list.push({ id, show: true });
+  return list;
+}
+let keybar = loadKeybar();
+
+const barEls = {}; // id -> nút đang hiện, để cập nhật trạng thái (Ctrl đang giữ, số prompt chờ)
+
+function renderKeybar() {
+  keybarEl.replaceChildren();
+  for (const id of Object.keys(barEls)) delete barEls[id];
+  for (const { id, show } of keybar) {
+    if (!show) continue;
+    const def = BAR_BUTTONS[id];
+    barEls[id] = el('button', {
+      type: 'button',
+      title: def.title,
+      text: def.label,
+      onclick: () => {
+        if (def.run) return def.run();
+        const tab = tabs.get(active);
+        send(tab, ctrlArmed && CTRL_KEYS[def.key] ? CTRL_KEYS[def.key] : KEYS[def.key]);
+        armCtrl(false);
+        if (!isTouch) tab?.term.focus();
+      },
+    });
+    keybarEl.append(barEls[id]);
+  }
+  armCtrl(ctrlArmed);
+  updateQueueBadge();
+  keybarEl.append(el('button', { type: 'button', title: 'Sửa thanh phím', 'aria-label': 'Sửa thanh phím', text: '⋯', onclick: editKeybar }));
+}
+
+function saveKeybar() {
+  store.set('cpm.keybar', keybar);
+  renderKeybar();
+  renderKeybarEdit();
+}
+
+function renderKeybarEdit() {
+  const listEl = $('#keybar-edit');
+  listEl.replaceChildren(...keybar.map((b, i) => {
+    const def = BAR_BUTTONS[b.id];
+    const move = (d) => {
+      [keybar[i], keybar[i + d]] = [keybar[i + d], keybar[i]];
+      saveKeybar();
+    };
+    return el('li', {},
+      el('label', { class: 'inline' },
+        el('input', { type: 'checkbox', checked: b.show, onchange: (e) => { b.show = e.target.checked; saveKeybar(); } }),
+        el('span', { class: 'key-label', text: def.label }),
+        el('span', { class: 'muted small', text: def.title })),
+      el('button', { type: 'button', class: 'icon-btn small', 'aria-label': `Đưa ${def.title} lên`, text: '↑', disabled: i === 0, onclick: () => move(-1) }),
+      el('button', { type: 'button', class: 'icon-btn small', 'aria-label': `Đưa ${def.title} xuống`, text: '↓', disabled: i === keybar.length - 1, onclick: () => move(1) }));
+  }));
+}
+
+function editKeybar() {
+  renderKeybarEdit();
+  $('#dlg-keybar').showModal();
+}
+$('#keybar-reset').addEventListener('click', () => {
+  keybar = BAR_DEFAULT.map((id) => ({ id, show: true }));
+  saveKeybar();
 });
+
+// Ctrl giữ: bấm Ctrl rồi gõ một phím (vào terminal hoặc trên thanh phím) để gửi Ctrl+phím đó.
+let ctrlArmed = false;
+const CTRL_KEYS = { up: '\x1b[1;5A', down: '\x1b[1;5B', right: '\x1b[1;5C', left: '\x1b[1;5D' };
+const CTRL_PUNCT = { '@': '\x00', ' ': '\x00', '[': '\x1b', '\\': '\x1c', ']': '\x1d', '^': '\x1e', '_': '\x1f', '?': '\x7f' };
+
+function armCtrl(on) {
+  ctrlArmed = on;
+  barEls.ctrl?.classList.toggle('armed', on);
+  if (on) tabs.get(active)?.term.focus();
+}
+
+function withCtrl(data) {
+  if (/^[a-z]$/i.test(data)) return String.fromCharCode(data.toUpperCase().charCodeAt(0) & 0x1f);
+  return CTRL_PUNCT[data] ?? data;
+}
 
 function setFont(size) {
   fontSize = Math.max(9, Math.min(24, size));
@@ -551,8 +675,140 @@ function setFont(size) {
     safeFit(t);
   }
 }
-$('#font-down').addEventListener('click', () => setFont(fontSize - 1));
-$('#font-up').addEventListener('click', () => setFont(fontSize + 1));
+
+renderKeybar();
+
+// Lịch sử các prompt đã gửi từ ô prompt (lưu trên trình duyệt này, mới nhất trước).
+const HISTORY_MAX = 100;
+
+function rememberPrompt(text) {
+  const list = store.get('cpm.promptHistory', []).filter((t) => t !== text);
+  list.unshift(text);
+  store.set('cpm.promptHistory', list.slice(0, HISTORY_MAX));
+}
+
+function showHistory() {
+  const dlg = $('#dlg-history');
+  const list = store.get('cpm.promptHistory', []);
+  const listEl = $('#history-list');
+  listEl.replaceChildren(...list.map((text) => el('li', {}, el('button', {
+    type: 'button',
+    class: 'prompt-text',
+    text,
+    onclick: () => {
+      dlg.close();
+      promptInput.value = text;
+      autoGrow();
+      promptInput.focus();
+    },
+  }))));
+  if (!list.length) listEl.append(el('li', { class: 'muted small', text: 'Chưa có prompt nào.' }));
+  dlg.showModal();
+}
+$('#history-clear').addEventListener('click', async () => {
+  $('#dlg-history').close();
+  if (await confirmDialog('Xóa toàn bộ lịch sử prompt trên trình duyệt này?', 'Xóa')) store.set('cpm.promptHistory', []);
+});
+
+// Hàng đợi prompt của phiên đang mở: nằm trên server, tự gửi khi hook báo Claude xong lượt.
+const STATE_TEXT = {
+  busy: 'Claude đang chạy. Prompt sẽ được gửi khi Claude xong.',
+  sent: 'Vừa gửi prompt, đang chờ Claude nhận.',
+  idle: 'Claude đang rảnh: prompt thêm vào sẽ được gửi ngay.',
+  waiting: 'Claude đang chờ anh cho phép. Hàng đợi tạm dừng.',
+  ended: 'Claude đã thoát. Hàng đợi không gửi gì vào shell.',
+};
+const dlgQueue = $('#dlg-queue');
+const queueUrl = (name) => `/api/sessions/${encodeURIComponent(name)}/queue`;
+let queueItems = [];
+let queueOf = null;
+
+function activeSession() {
+  return sessions.find((s) => s.name === active);
+}
+
+function updateQueueBadge() {
+  const n = activeSession()?.queued || 0;
+  if (barEls.queue) barEls.queue.textContent = n ? `📋${n}` : '📋';
+}
+
+async function showQueue() {
+  const s = activeSession();
+  if (!s) return toast('Mở một phiên trước (bấm ＋)', 'error');
+  queueOf = s.name;
+  queueItems = [];
+  renderQueue();
+  dlgQueue.showModal();
+  await loadQueue();
+}
+
+async function loadQueue() {
+  if (!queueOf) return;
+  try {
+    queueItems = (await api('GET', queueUrl(queueOf))).items;
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+  renderQueue();
+}
+
+function renderQueue() {
+  const s = sessions.find((x) => x.name === queueOf);
+  $('h2', dlgQueue).textContent = `Hàng đợi · ${s ? sessionLabel(s) : queueOf}`;
+  $('#queue-state').textContent = s?.kind === 'shell'
+    ? 'Phiên Terminal không có trạng thái, hàng đợi chỉ gửi khi bấm "Gửi tiếp ngay".'
+    : STATE_TEXT[s?.state] || 'Chưa biết trạng thái (phiên mở trước khi có hàng đợi): mở phiên Claude mới, hoặc bấm "Gửi tiếp ngay".';
+  const listEl = $('#queue-list');
+  listEl.replaceChildren(...queueItems.map((item, i) => {
+    const move = (d) => {
+      [queueItems[i], queueItems[i + d]] = [queueItems[i + d], queueItems[i]];
+      saveQueue();
+    };
+    return el('li', { class: 'queue-item' },
+      el('button', {
+        type: 'button',
+        class: 'prompt-text queue-text',
+        title: 'Lấy ra ô prompt để sửa',
+        text: item.text,
+        onclick: () => {
+          queueItems.splice(i, 1);
+          saveQueue();
+          dlgQueue.close();
+          promptInput.value = item.text;
+          autoGrow();
+          promptInput.focus();
+        },
+      }),
+      el('button', { type: 'button', class: 'icon-btn small', 'aria-label': 'Lên', text: '↑', disabled: i === 0, onclick: () => move(-1) }),
+      el('button', { type: 'button', class: 'icon-btn small', 'aria-label': 'Xuống', text: '↓', disabled: i === queueItems.length - 1, onclick: () => move(1) }),
+      el('button', { type: 'button', class: 'icon-btn small', 'aria-label': 'Xóa', text: '✕', onclick: () => { queueItems.splice(i, 1); saveQueue(); } }));
+  }));
+  if (!queueItems.length) listEl.append(el('li', { class: 'muted small', text: 'Hàng đợi trống. Gõ prompt rồi bấm ⏳ để thêm.' }));
+  $('#queue-next').disabled = !queueItems.length;
+}
+
+async function saveQueue() {
+  renderQueue();
+  try {
+    queueItems = (await api('PUT', queueUrl(queueOf), { items: queueItems })).items;
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+  renderQueue();
+  refreshSessions();
+}
+
+$('#queue-next').addEventListener('click', async () => {
+  try {
+    queueItems = (await api('POST', `${queueUrl(queueOf)}/next`)).items;
+    toast('Đã gửi prompt tiếp theo');
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+  renderQueue();
+  refreshSessions();
+});
+dlgQueue.addEventListener('close', () => { queueOf = null; });
 
 const promptForm = $('#prompt-form');
 const promptInput = $('#prompt-input');
@@ -578,11 +834,29 @@ promptForm.addEventListener('submit', (e) => {
     return;
   }
   if (!text) return;
+  rememberPrompt(text);
   // Dán theo kiểu bracketed paste để xuống dòng không bị hiểu là Enter, rồi mới gửi Enter.
   send(tab, text.includes('\n') ? `\x1b[200~${text}\x1b[201~` : text);
   setTimeout(() => send(tab, '\r'), 80);
   promptInput.value = '';
   autoGrow();
+});
+
+$('#prompt-queue').addEventListener('click', async () => {
+  const s = activeSession();
+  const text = promptInput.value;
+  if (!s) return toast('Mở một phiên trước (bấm ＋)', 'error');
+  if (!text.trim()) return showQueue();
+  try {
+    const { items } = await api('POST', queueUrl(s.name), { text });
+    rememberPrompt(text);
+    promptInput.value = '';
+    autoGrow();
+    toast(s.state === 'idle' ? 'Claude đang rảnh, gửi ngay' : `Đã xếp hàng (${items.length} prompt đang chờ)`);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+  refreshSessions();
 });
 
 // Chèn đường dẫn file (từ panel File) vào ô prompt, dạng @path mà Claude hiểu.

@@ -17,6 +17,7 @@ const auth = require('./auth');
 const files = require('./files');
 const git = require('./git');
 const projects = require('./projects');
+const queue = require('./queue');
 const tmux = require('./tmux');
 
 const PORT = Number(process.env.PORT || 4777);
@@ -26,6 +27,8 @@ const COOKIE_SECURE = process.env.COOKIE_SECURE !== '0';
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
 const COOKIE_NAME = 'cpm_sid';
 const MAX_BODY = 16 * 1024;
+const QUEUE_BODY = 256 * 1024; // một prompt trong hàng đợi (tối đa 100 KB chữ, tính cả escape JSON)
+const QUEUE_LIST_BODY = 8 * 1024 * 1024; // cả hàng đợi khi sửa/đổi thứ tự
 
 const authConfig = auth.loadAuthConfig();
 const sessions = new auth.SessionStore();
@@ -111,13 +114,13 @@ function sendStatic(res, rel, type) {
   });
 }
 
-function readJson(req) {
+function readJson(req, max = MAX_BODY) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size > MAX_BODY) {
+      if (size > max) {
         reject(Object.assign(new Error('Body quá lớn'), { status: 413 }));
         req.destroy();
         return;
@@ -216,11 +219,34 @@ route('DELETE', '/api/sessions/:name', async (req, res, name) => {
   await tmux.kill(name).catch((err) => {
     throw projects.httpError(400, err.stderr?.trim() || err.message);
   });
+  queue.drop(name);
   sendJson(res, 200, { ok: true });
 });
 route('GET', '/api/projects/:p/sessions', async (req, res, p) => {
   projects.projectDir(p);
-  sendJson(res, 200, { sessions: (await tmux.list()).filter((s) => s.project === p) });
+  const list = (await tmux.list()).filter((s) => s.project === p);
+  sendJson(res, 200, { sessions: list.map((s) => ({ ...s, queued: queue.get(s.name).length })) });
+});
+
+async function sessionOr404(name) {
+  if (!(await tmux.exists(name))) throw projects.httpError(404, 'Không có phiên này');
+}
+route('GET', '/api/sessions/:name/queue', async (req, res, name) => {
+  await sessionOr404(name);
+  sendJson(res, 200, { items: queue.get(name) });
+});
+route('POST', '/api/sessions/:name/queue', async (req, res, name) => {
+  await sessionOr404(name);
+  sendJson(res, 201, { items: queue.add(name, (await readJson(req, QUEUE_BODY)).text) });
+});
+route('PUT', '/api/sessions/:name/queue', async (req, res, name) => {
+  await sessionOr404(name);
+  sendJson(res, 200, { items: queue.update(name, (await readJson(req, QUEUE_LIST_BODY)).items) });
+});
+route('POST', '/api/sessions/:name/queue/next', async (req, res, name) => {
+  await sessionOr404(name);
+  const sent = await queue.sendNext(name);
+  sendJson(res, 200, { sent: !!sent, items: queue.get(name) });
 });
 route('POST', '/api/projects/:p/sessions', async (req, res, p) => {
   const body = await readJson(req);
@@ -403,6 +429,7 @@ async function onTerminal(ws, sid, name, cols, rows) {
 }
 
 projects.ensureRoot();
+queue.start();
 server.listen(PORT, HOST, () => {
   console.log(`claude-prompt-manager chạy tại http://${HOST}:${PORT} (tmux socket: ${tmux.SOCKET}, dự án: ${projects.PROJECTS_DIR})`);
 });
