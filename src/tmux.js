@@ -10,12 +10,17 @@ const pty = require('node-pty');
 const SOCKET = process.env.CPM_TMUX_SOCKET || 'cpm';
 const CONF = path.join(__dirname, '..', 'tmux.conf');
 const NAME_RE = /^[A-Za-z0-9_-]{1,48}$/;
+// Hook của Claude ghi trạng thái (busy/idle/waiting/ended) vào option @cpm_state của phiên tmux,
+// để hàng đợi prompt biết lúc nào Claude xong việc. --settings chỉ cộng thêm, không đè cấu hình của anh.
+const shq = (s) => `'${s.replace(/'/g, `'\\''`)}'`;
+const HOOKS = `--settings ${shq(path.join(__dirname, 'claude-hooks.json'))}`;
 const COMMANDS = {
-  claude: 'claude --permission-mode auto',
+  claude: `claude --permission-mode auto ${HOOKS}`,
   // Chỉ mở khi bấm giữ nút Claude: bỏ qua mọi bước hỏi quyền.
-  'claude-bypass': 'claude --dangerously-skip-permissions',
+  'claude-bypass': `claude --dangerously-skip-permissions ${HOOKS}`,
   shell: null,
 };
+const SHELLS = new Set(['bash', 'zsh', 'sh', 'fish', 'dash', 'ksh', 'login', '-bash', '-zsh']);
 
 function cleanEnv() {
   const env = { ...process.env, TERM: 'xterm-256color', LANG: process.env.LANG || 'C.UTF-8' };
@@ -45,7 +50,7 @@ function validName(name) {
 }
 
 async function list() {
-  const fmt = ['#{session_name}', '#{session_created}', '#{session_activity}', '#{session_attached}', '#{pane_current_path}', '#{pane_current_command}', '#{@cpm_project}', '#{@cpm_kind}'].join('\t');
+  const fmt = ['#{session_name}', '#{session_created}', '#{session_activity}', '#{session_attached}', '#{pane_current_path}', '#{pane_current_command}', '#{@cpm_project}', '#{@cpm_kind}', '#{@cpm_state}'].join('\t');
   let out;
   try {
     out = await tmux(['list-sessions', '-F', fmt]);
@@ -57,7 +62,7 @@ async function list() {
     .split('\n')
     .filter(Boolean)
     .map((line) => {
-      const [name, created, activity, attached, cwd, command, project, kind] = line.split('\t');
+      const [name, created, activity, attached, cwd, command, project, kind, state] = line.split('\t');
       return {
         name,
         project: project || null,
@@ -67,6 +72,8 @@ async function list() {
         attached: Number(attached),
         cwd,
         command,
+        // Claude đã thoát về shell thì coi như hết phiên Claude, dù hook SessionEnd không kịp chạy.
+        state: SHELLS.has(command) ? (state ? 'ended' : null) : state || null,
       };
     })
     .sort((a, b) => a.created - b.created);
@@ -115,6 +122,19 @@ async function history(name, lines = 3000) {
   }
 }
 
+function setState(name, state) {
+  return tmux(['set-option', '-t', `=${name}:`, '@cpm_state', state]);
+}
+
+// Gõ một prompt vào phiên: dán theo kiểu bracketed paste (-p) giữ nguyên xuống dòng (-r), rồi Enter.
+async function sendText(name, text) {
+  const buf = `cpm-${name}`;
+  await tmux(['set-buffer', '-b', buf, '--', text]);
+  await tmux(['paste-buffer', '-p', '-r', '-d', '-b', buf, '-t', `=${name}:`]);
+  await new Promise((r) => setTimeout(r, 150));
+  await tmux(['send-keys', '-t', `=${name}:`, 'Enter']);
+}
+
 function attach(name, cols, rows) {
   return pty.spawn('tmux', ['-L', SOCKET, '-f', CONF, 'attach-session', '-t', `=${name}`], {
     name: 'xterm-256color',
@@ -125,4 +145,4 @@ function attach(name, cols, rows) {
   });
 }
 
-module.exports = { SOCKET, validName, list, exists, create, kill, history, attach };
+module.exports = { SOCKET, validName, list, exists, create, kill, history, setState, sendText, attach };

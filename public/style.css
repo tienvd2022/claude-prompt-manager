@@ -303,6 +303,21 @@ dialog .job { margin: 0; }
 .keys { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
 .keys::-webkit-scrollbar { display: none; }
 .keys button { flex: none; min-width: 40px; padding: 6px 8px; font-size: 13px; }
+.keybar-edit, .history-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 60vh; overflow-y: auto; }
+.keybar-edit li { display: flex; align-items: center; gap: 6px; }
+.keybar-edit label.inline { flex: 1; }
+.keybar-edit .key-label { display: inline-block; min-width: 40px; text-align: center; }
+.queue-item { display: flex; align-items: flex-start; gap: 4px; }
+.queue-item .queue-text { flex: 1; min-width: 0; }
+.keys button.armed { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.tab-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: middle; background: var(--muted); }
+.tab-dot.busy, .tab-dot.sent { background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
+.tab-dot.idle { background: var(--ok); }
+.tab-dot.waiting { background: #e5c04f; }
+.tab-dot.ended { background: transparent; border: 1px solid var(--muted); }
+.tab-queued { margin-left: 4px; font-size: 11px; color: var(--muted); }
+@keyframes pulse { 50% { opacity: .35; } }
+.history-list .prompt-text { width: 100%; text-align: left; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .prompt-form { display: flex; gap: 6px; align-items: flex-end; }
 .prompt-form textarea { resize: none; min-height: 38px; max-height: 160px; }
 .prompt-form button { height: 38px; }
