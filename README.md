@@ -1,9 +1,14 @@
 # Claude Prompt Manager
 
-Web UI nhỏ để mở, xem và prompt các phiên Claude Code chạy trên server, kể cả từ điện thoại.
+Web UI nhỏ để làm việc với Claude Code trên server, kể cả từ điện thoại.
 
-- Mỗi phiên là một session tmux (socket riêng `-L cpm`). Đóng tab hay đóng web thì Claude vẫn chạy.
-- Có tab, danh sách phiên, tạo/kết thúc phiên, thanh phím (Esc, Tab, ↑↓, ^C) và ô gõ prompt cho điện thoại.
+Luồng dùng: đăng nhập → chọn dự án → mở nhiều tab (mỗi tab là một phiên Claude hoặc terminal) → prompt.
+
+- **Dự án**: mọi dự án nằm trong một thư mục (`~/projects`, đổi bằng `PROJECTS_DIR`), mỗi dự án là một thư mục con. Tạo thư mục trống hoặc clone từ git.
+- **Phiên**: mỗi tab là một session tmux (socket riêng `-L cpm`) chạy trong thư mục dự án. Đóng tab hay đóng web thì Claude vẫn chạy.
+- **File**: duyệt thư mục, upload (nút hoặc kéo thả), tải file/thư mục (.tar.gz), đổi tên, xóa, chèn `@đường-dẫn` vào prompt.
+- **Git**: xem thay đổi + diff, commit tất cả, lịch sử commit, fetch / pull (`--ff-only`) / push. Clone/push qua SSH dùng key của server.
+- Thanh phím (Esc, Tab, ↑↓, ^C) và ô gõ prompt cho điện thoại.
 - Chạy dưới user thường, không cần root. Lệnh Claude chạy có đúng quyền của user đó.
 
 ## Bảo mật
@@ -34,7 +39,17 @@ Cập nhật: `git pull && bash deploy/install.sh`. Các phiên Claude đang ch�
 Sites → Add Site → **Create a Reverse Proxy** → domain, Reverse Proxy URL `http://127.0.0.1:4777` → bật SSL Let's Encrypt.
 Template của CloudPanel đã có header WebSocket, không cần sửa thêm.
 
+Upload file lớn qua nginx: nginx mặc định giới hạn body (CloudPanel thường để vài chục MB). Nếu cần upload file lớn hơn thì tăng `client_max_body_size` trong vhost của site này. App tự giới hạn ở `MAX_UPLOAD_MB` (mặc định 512).
+
 Nếu domain đi qua Cloudflare (proxy cam), IP thấy được là IP Cloudflare nên rate limit theo IP gần như thành rate limit chung — vẫn an toàn, chỉ là dễ bị khóa chung hơn.
+
+### Git qua SSH
+
+1. Trên web: ⚙ (màn Dự án) → **Tạo SSH key** → Copy public key.
+2. Thêm key vào GitHub → Settings → SSH keys (hoặc Deploy keys của từng repo nếu muốn giới hạn).
+3. Điền tên/email hiện trong commit rồi Lưu.
+
+Host lạ được tự chấp nhận lần đầu (`StrictHostKeyChecking=accept-new`). Git không bao giờ hỏi mật khẩu trên web: repo HTTPS riêng tư sẽ báo lỗi, hãy dùng URL SSH.
 
 ## Dùng hằng ngày
 
@@ -43,6 +58,7 @@ Nếu domain đi qua Cloudflare (proxy cam), IP thấy được là IP Cloudflar
 | Đổi mật khẩu web | `npm run set-password` rồi `systemctl --user restart claude-prompt-manager` |
 | Xem log | `journalctl --user -u claude-prompt-manager -f` |
 | Vào phiên từ SSH | `tmux -L cpm ls`, `tmux -L cpm attach -t <tên>` (thoát: `Ctrl+b d`) |
+| Đổi thư mục dự án / giới hạn upload | thêm `Environment=PROJECTS_DIR=...` / `MAX_UPLOAD_MB=...` vào service |
 | Đổi cổng/giới hạn RAM | sửa `deploy/claude-prompt-manager.service` rồi chạy lại `install.sh` |
 
 Chạy thử ở máy cá nhân (không HTTPS): `COOKIE_SECURE=0 npm start`.

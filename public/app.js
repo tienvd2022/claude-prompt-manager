@@ -1,11 +1,16 @@
-'use strict';
+// Màn chính: chọn dự án -> làm việc trong dự án (nhiều tab terminal, panel File/Git).
 
 /* global Terminal, FitAddon */
 
-const $ = (sel) => document.querySelector(sel);
+import { $, el, api, store, projectUrl, timeAgo, toast, confirmDialog, followJob, isTouch, isNarrow } from './common.js';
+import { initFiles, setFilesProject, load as loadFiles } from './files.js';
+import { initGit, setGitProject, load as loadGit } from './gitpanel.js';
+
+const viewProjects = $('#view-projects');
+const viewWorkspace = $('#view-workspace');
 const tabsEl = $('#tabs');
 const terminalsEl = $('#terminals');
-const listEl = $('#session-list');
+const sessionListEl = $('#session-list');
 const statusEl = $('#status');
 const emptyEl = $('#empty');
 
@@ -21,108 +26,301 @@ const KEYS = {
   enter: '\r',
 };
 
-const store = {
-  get(key, fallback) {
-    try {
-      const v = localStorage.getItem(key);
-      return v === null ? fallback : JSON.parse(v);
-    } catch {
-      return fallback;
-    }
-  },
-  set(key, value) {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-    } catch {
-      // trình duyệt chặn storage thì bỏ qua
-    }
-  },
-};
-
-const isTouch = matchMedia('(pointer: coarse)').matches;
 let fontSize = store.get('cpm.fontSize', isTouch ? 12 : 14);
-let sessions = [];
-const tabs = new Map(); // name -> tab
+let project = null; // dự án đang mở
+let sessions = []; // phiên tmux của dự án đang mở
+const tabs = new Map(); // tên phiên -> tab
 let active = null;
+let panel = store.get('cpm.panel', 'sessions');
+let refreshTimer = null;
 
-// ---------- API ----------
+// ---------- Điều hướng: #/ là danh sách dự án, #/p/<tên> là dự án ----------
 
-async function api(method, url, body) {
-  const res = await fetch(url, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  if (res.status === 401) {
-    location.href = '/login';
-    throw new Error('Chưa đăng nhập');
+function route() {
+  const m = location.hash.match(/^#\/p\/(.+)$/);
+  const name = m ? decodeURIComponent(m[1]) : null;
+  if (name) openProject(name);
+  else showProjects();
+}
+window.addEventListener('hashchange', route);
+
+// ---------- Danh sách dự án ----------
+
+let projectList = [];
+
+async function showProjects() {
+  closeProject();
+  viewWorkspace.hidden = true;
+  viewProjects.hidden = false;
+  document.title = 'Dự án · Claude Prompt Manager';
+  try {
+    const data = await api('GET', '/api/projects');
+    projectList = data.projects;
+    $('#projects-root').textContent = `Thư mục dự án trên server: ${data.root}`;
+  } catch (err) {
+    toast(err.message, 'error');
   }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Lỗi ${res.status}`);
-  return data;
+  renderProjects();
 }
 
-async function refreshSessions() {
-  try {
-    sessions = (await api('GET', '/api/sessions')).sessions;
-  } catch (err) {
-    showStatus(err.message);
+function renderProjects() {
+  const listEl = $('#project-list');
+  const q = $('#project-filter').value.trim().toLowerCase();
+  const recent = store.get('cpm.recent', {});
+  const items = projectList
+    .filter((p) => !q || p.name.toLowerCase().includes(q))
+    .sort((a, b) => (recent[b.name] || 0) - (recent[a.name] || 0) || a.name.localeCompare(b.name));
+  listEl.replaceChildren();
+  if (!items.length) {
+    listEl.append(el('li', { class: 'muted pad', text: projectList.length ? 'Không có dự án khớp.' : 'Chưa có dự án nào. Bấm "＋ Dự án mới" để tạo hoặc clone.' }));
     return;
   }
-  renderList();
+  for (const p of items) {
+    const meta = [
+      p.git ? `⎇ ${p.branch || 'git'}` : 'không có git',
+      p.sessions ? `${p.sessions} phiên đang chạy` : '',
+      recent[p.name] ? `mở ${timeAgo(recent[p.name])}` : '',
+    ].filter(Boolean).join(' · ');
+    listEl.append(el('li', {}, el('a', { class: 'project-card', href: `#/p/${encodeURIComponent(p.name)}` },
+      el('span', { class: 'project-name', text: p.name }),
+      el('span', { class: 'project-meta', text: meta }),
+      p.sessions ? el('span', { class: 'dot', title: 'Có phiên đang chạy' }) : null)));
+  }
+}
+
+$('#project-filter').addEventListener('input', renderProjects);
+
+// Tạo dự án trống hoặc clone từ git.
+const dlgProject = $('#dlg-project');
+const projectForm = $('#project-form');
+let autoName = true;
+
+$('#btn-new-project').addEventListener('click', () => {
+  projectForm.reset();
+  autoName = true;
+  $('#project-error').textContent = '';
+  $('#project-job').hidden = true;
+  setProjectFormBusy(false);
+  dlgProject.showModal();
+});
+
+projectForm.gitUrl.addEventListener('input', () => {
+  if (!autoName) return;
+  const m = projectForm.gitUrl.value.trim().match(/([^/:]+?)(?:\.git)?\/?$/);
+  projectForm.name.value = m ? m[1].replace(/[^A-Za-z0-9._-]/g, '-') : '';
+});
+projectForm.name.addEventListener('input', () => {
+  autoName = !projectForm.name.value;
+});
+
+function setProjectFormBusy(busy) {
+  for (const b of projectForm.querySelectorAll('button, input')) b.disabled = busy;
+}
+
+projectForm.addEventListener('submit', async (e) => {
+  if (e.submitter?.value !== 'ok') return;
+  e.preventDefault();
+  const name = projectForm.name.value.trim();
+  const gitUrl = projectForm.gitUrl.value.trim();
+  $('#project-error').textContent = '';
+  setProjectFormBusy(true);
+  try {
+    const res = await api('POST', '/api/projects', { name, gitUrl: gitUrl || undefined });
+    if (res.job) {
+      const job = await followJob(res.job, $('#project-job'));
+      if (job.status !== 'ok') throw new Error('Clone lỗi, xem chi tiết ở trên. Nếu là repo private qua SSH, kiểm tra SSH key trong ⚙ Cài đặt Git.');
+    }
+    dlgProject.close();
+    location.hash = `#/p/${encodeURIComponent(name)}`;
+  } catch (err) {
+    $('#project-error').textContent = err.message;
+  } finally {
+    setProjectFormBusy(false);
+  }
+});
+
+// Cài đặt git chung: tên/email để commit, SSH key để clone/push.
+const dlgGit = $('#dlg-git');
+const gitForm = $('#git-settings-form');
+
+async function openGitSettings() {
+  $('#git-settings-error').textContent = '';
+  try {
+    renderGitSettings(await api('GET', '/api/git/config'));
+  } catch (err) {
+    toast(err.message, 'error');
+    return;
+  }
+  dlgGit.showModal();
+}
+
+function renderGitSettings(cfg) {
+  gitForm.name.value = cfg.name;
+  gitForm.email.value = cfg.email;
+  $('#ssh-key').value = cfg.sshKey || '';
+  $('#ssh-key-box').hidden = !cfg.sshKey;
+  $('#btn-ssh-create').hidden = !!cfg.sshKey;
+}
+
+$('#btn-git-settings').addEventListener('click', openGitSettings);
+$('#btn-ssh-create').addEventListener('click', async () => {
+  try {
+    renderGitSettings(await api('POST', '/api/git/ssh-key'));
+  } catch (err) {
+    $('#git-settings-error').textContent = err.message;
+  }
+});
+$('#btn-ssh-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('#ssh-key').value);
+    toast('Đã copy SSH key');
+  } catch {
+    $('#ssh-key').select();
+  }
+});
+gitForm.addEventListener('submit', async (e) => {
+  if (e.submitter?.value !== 'ok') return;
+  e.preventDefault();
+  try {
+    await api('POST', '/api/git/config', { name: gitForm.name.value, email: gitForm.email.value });
+    dlgGit.close();
+    toast('Đã lưu cài đặt git');
+  } catch (err) {
+    $('#git-settings-error').textContent = err.message;
+  }
+});
+
+// ---------- Mở / đóng dự án ----------
+
+async function openProject(name) {
+  if (project === name) return;
+  closeProject();
+  project = name;
+  viewProjects.hidden = true;
+  viewWorkspace.hidden = false;
+  $('#project-title').textContent = name;
+  $('#sidebar-title').textContent = name;
+  document.title = `${name} · Claude Prompt Manager`;
+  const recent = store.get('cpm.recent', {});
+  recent[name] = Date.now();
+  store.set('cpm.recent', recent);
+
+  setFilesProject(name);
+  setGitProject(name);
+  if (!isNarrow()) document.body.classList.add('sidebar-open');
+  showPanel(panel);
+  fitViewport();
+
+  if (!(await refreshSessions())) return;
+  const names = new Set(sessions.map((s) => s.name));
+  for (const n of store.get(`cpm.tabs.${name}`, [])) if (names.has(n)) openTab(n);
+  const last = store.get(`cpm.active.${name}`, null);
+  if (last && tabs.has(last)) activate(last);
+  emptyEl.hidden = tabs.size > 0;
+  refreshTimer = setInterval(refreshSessions, 10000);
+}
+
+function closeProject() {
+  clearInterval(refreshTimer);
+  for (const tab of [...tabs.values()]) disposeTab(tab);
+  tabs.clear();
+  active = null;
+  project = null;
+  sessions = [];
+  hideStatus();
+}
+
+// ---------- Panel bên trái: Phiên / File / Git ----------
+
+function showPanel(name) {
+  panel = name;
+  store.set('cpm.panel', name);
+  for (const btn of document.querySelectorAll('[data-panel]')) btn.classList.toggle('active', btn.dataset.panel === name);
+  for (const p of ['sessions', 'files', 'git']) $(`#panel-${p}`).hidden = p !== name;
+  if (name === 'files') loadFiles();
+  if (name === 'git') loadGit();
+}
+
+document.querySelectorAll('[data-panel]').forEach((btn) => btn.addEventListener('click', () => showPanel(btn.dataset.panel)));
+
+// ---------- Phiên của dự án ----------
+
+async function refreshSessions() {
+  if (!project) return false;
+  const current = project;
+  try {
+    const data = await api('GET', projectUrl(current, '/sessions'));
+    if (current !== project) return false;
+    sessions = data.sessions;
+  } catch (err) {
+    toast(err.message, 'error');
+    if (/Không có dự án/.test(err.message)) location.hash = '#/';
+    return false;
+  }
+  renderSessions();
   // Tab của phiên đã bị tắt ở nơi khác thì đóng lại.
   for (const name of [...tabs.keys()]) {
     if (!sessions.some((s) => s.name === name)) closeTab(name);
   }
+  return true;
 }
 
-// ---------- Danh sách phiên ----------
-
-function timeAgo(ms) {
-  const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
-  if (s < 60) return `${s} giây trước`;
-  if (s < 3600) return `${Math.round(s / 60)} phút trước`;
-  if (s < 86400) return `${Math.round(s / 3600)} giờ trước`;
-  return `${Math.round(s / 86400)} ngày trước`;
+function sessionLabel(s) {
+  const n = s.name.slice(s.name.lastIndexOf('-') + 1);
+  return `${s.kind === 'shell' ? 'Terminal' : 'Claude'} ${n}`;
 }
 
-function renderList() {
-  listEl.replaceChildren();
+function renderSessions() {
+  sessionListEl.replaceChildren();
   if (!sessions.length) {
-    const li = document.createElement('li');
-    li.className = 'muted';
-    li.textContent = 'Chưa có phiên nào.';
-    listEl.append(li);
+    sessionListEl.append(el('li', { class: 'muted pad', text: 'Chưa có phiên nào. Bấm ＋ để mở phiên Claude.' }));
     return;
   }
   for (const s of sessions) {
-    const li = document.createElement('li');
-    li.className = 'session-item' + (s.name === active ? ' active' : '');
-
-    const info = document.createElement('button');
-    info.className = 'session-open';
-    info.title = 'Mở phiên';
-    const title = document.createElement('span');
-    title.className = 'session-name';
-    title.textContent = s.name;
-    const meta = document.createElement('span');
-    meta.className = 'session-meta';
-    meta.textContent = `${s.command} · ${s.cwd.replace(/^\/home\/[^/]+/, '~')} · hoạt động ${timeAgo(s.activity)}`;
-    info.append(title, meta);
-    info.addEventListener('click', () => {
-      openTab(s.name);
-      if (isNarrow()) toggleSidebar(false);
-    });
-
-    const kill = document.createElement('button');
-    kill.className = 'danger-link';
-    kill.textContent = 'Kết thúc';
-    kill.addEventListener('click', () => confirmKill(s.name));
-
-    li.append(info, kill);
-    listEl.append(li);
+    const info = el('button', {
+      class: 'session-open',
+      title: 'Mở phiên',
+      onclick: () => {
+        openTab(s.name);
+        if (isNarrow()) toggleSidebar(false);
+      },
+    },
+    el('span', { class: 'session-name', text: `${sessionLabel(s)}${tabs.has(s.name) ? '' : ' (đang ẩn)'}` }),
+    el('span', { class: 'session-meta', text: `${s.name} · ${s.command} · hoạt động ${timeAgo(s.activity)}` }));
+    const kill = el('button', { class: 'danger-link', text: 'Kết thúc', onclick: () => confirmKill(s) });
+    sessionListEl.append(el('li', { class: `session-item${s.name === active ? ' active' : ''}` }, info, kill));
   }
 }
+
+async function confirmKill(s) {
+  const what = s.kind === 'shell' ? 'Terminal' : 'Claude';
+  if (!(await confirmDialog(`Tắt hẳn phiên "${sessionLabel(s)}"? ${what} đang chạy trong phiên này sẽ bị dừng.`, 'Kết thúc phiên'))) return;
+  try {
+    await api('DELETE', `/api/sessions/${encodeURIComponent(s.name)}`);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+  closeTab(s.name);
+  refreshSessions();
+}
+
+// Mở phiên mới: chọn Claude hoặc Terminal.
+const dlgNew = $('#dlg-new');
+$('#btn-new').addEventListener('click', () => {
+  dlgNew.returnValue = '';
+  dlgNew.showModal();
+});
+dlgNew.addEventListener('close', async () => {
+  const command = dlgNew.returnValue;
+  if (command !== 'claude' && command !== 'shell') return;
+  try {
+    const created = await api('POST', projectUrl(project, '/sessions'), { command });
+    await refreshSessions();
+    openTab(created.name);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+});
 
 // ---------- Tab + terminal ----------
 
@@ -132,7 +330,6 @@ function makeTerminal() {
     fontSize,
     cursorBlink: true,
     scrollback: 20000,
-    allowProposedApi: false,
     theme: {
       background: '#1a1917',
       foreground: '#e8e4dc',
@@ -147,31 +344,27 @@ function makeTerminal() {
 
 function openTab(name) {
   if (tabs.has(name)) return activate(name);
+  const s = sessions.find((x) => x.name === name);
 
-  const el = document.createElement('div');
-  el.className = 'term';
-  terminalsEl.append(el);
+  const elTerm = el('div', { class: 'term' });
+  terminalsEl.append(elTerm);
   const { term, fit } = makeTerminal();
-  term.open(el);
+  term.open(elTerm);
 
-  const tabEl = document.createElement('div');
-  tabEl.className = 'tab';
-  const label = document.createElement('button');
-  label.className = 'tab-label';
-  label.textContent = name;
-  label.addEventListener('click', () => activate(name));
-  const close = document.createElement('button');
-  close.className = 'tab-close';
-  close.title = 'Đóng tab (phiên vẫn chạy)';
-  close.textContent = '×';
-  close.addEventListener('click', (e) => {
-    e.stopPropagation();
-    closeTab(name);
+  const label = el('button', { class: 'tab-label', text: s ? sessionLabel(s) : name, title: name, onclick: () => activate(name) });
+  const close = el('button', {
+    class: 'tab-close',
+    title: 'Ẩn tab (phiên vẫn chạy)',
+    text: '×',
+    onclick: (e) => {
+      e.stopPropagation();
+      closeTab(name);
+    },
   });
-  tabEl.append(label, close);
+  const tabEl = el('div', { class: 'tab' }, label, close);
   tabsEl.append(tabEl);
 
-  const tab = { name, el, tabEl, term, fit, ws: null, retry: 0, closed: false, timer: null };
+  const tab = { name, el: elTerm, tabEl, term, fit, ws: null, retry: 0, closed: false, timer: null };
   tabs.set(name, tab);
 
   term.onData((data) => send(tab, data));
@@ -201,19 +394,23 @@ function activate(name) {
     tab.tabEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     updateStatus(tab);
   }
-  renderList();
-  store.set('cpm.active', name);
+  renderSessions();
+  if (project) store.set(`cpm.active.${project}`, name);
 }
 
-function closeTab(name) {
-  const tab = tabs.get(name);
-  if (!tab) return;
+function disposeTab(tab) {
   tab.closed = true;
   clearTimeout(tab.timer);
   tab.ws?.close();
   tab.term.dispose();
   tab.el.remove();
   tab.tabEl.remove();
+}
+
+function closeTab(name) {
+  const tab = tabs.get(name);
+  if (!tab) return;
+  disposeTab(tab);
   tabs.delete(name);
   saveOpenTabs();
   if (active === name) {
@@ -223,13 +420,13 @@ function closeTab(name) {
       active = null;
       emptyEl.hidden = false;
       hideStatus();
-      renderList();
     }
   }
+  renderSessions();
 }
 
 function saveOpenTabs() {
-  store.set('cpm.tabs', [...tabs.keys()]);
+  if (project) store.set(`cpm.tabs.${project}`, [...tabs.keys()]);
 }
 
 function safeFit(tab) {
@@ -275,7 +472,7 @@ function connect(tab) {
     const delay = Math.min(10000, 500 * 2 ** tab.retry++);
     tab.timer = setTimeout(async () => {
       await refreshSessions();
-      if (tabs.has(tab.name)) connect(tab);
+      if (tabs.get(tab.name) === tab) connect(tab);
     }, delay);
   });
 }
@@ -284,7 +481,7 @@ function send(tab, data) {
   if (tab?.ws?.readyState === WebSocket.OPEN) tab.ws.send(JSON.stringify({ type: 'input', data }));
 }
 
-// ---------- Trạng thái ----------
+// ---------- Trạng thái kết nối ----------
 
 function showStatus(text) {
   statusEl.textContent = text;
@@ -301,58 +498,6 @@ function updateStatus(tab) {
   else if (tab.state === 'connecting') showStatus('Đang kết nối…');
   else if (tab.state === 'reconnecting') showStatus('Mất kết nối, đang nối lại…');
   else if (tab.state === 'ended') showStatus('Phiên đã kết thúc.');
-}
-
-// ---------- Hộp thoại ----------
-
-function defaultName() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `s${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
-}
-
-const dlgNew = $('#dlg-new');
-const newForm = $('#new-form');
-
-$('#btn-new').addEventListener('click', () => {
-  newForm.name.value = defaultName();
-  newForm.cwd.value = store.get('cpm.lastCwd', '~');
-  $('#new-error').textContent = '';
-  dlgNew.showModal();
-  newForm.name.select();
-});
-
-newForm.addEventListener('submit', async (e) => {
-  if (e.submitter?.value !== 'ok') return;
-  e.preventDefault();
-  const body = { name: newForm.name.value.trim(), cwd: newForm.cwd.value.trim(), command: newForm.command.value };
-  try {
-    await api('POST', '/api/sessions', body);
-    store.set('cpm.lastCwd', body.cwd);
-    dlgNew.close();
-    await refreshSessions();
-    openTab(body.name);
-  } catch (err) {
-    $('#new-error').textContent = err.message;
-  }
-});
-
-const dlgConfirm = $('#dlg-confirm');
-
-function confirmKill(name) {
-  $('#confirm-text').textContent = `Tắt hẳn phiên "${name}"? Claude đang chạy trong phiên này sẽ bị dừng.`;
-  dlgConfirm.returnValue = '';
-  dlgConfirm.onclose = async () => {
-    if (dlgConfirm.returnValue !== 'ok') return;
-    try {
-      await api('DELETE', `/api/sessions/${encodeURIComponent(name)}`);
-    } catch (err) {
-      showStatus(err.message);
-    }
-    closeTab(name);
-    refreshSessions();
-  };
-  dlgConfirm.showModal();
 }
 
 // ---------- Thanh phím + ô prompt (tiện cho điện thoại) ----------
@@ -394,7 +539,11 @@ promptForm.addEventListener('submit', (e) => {
   e.preventDefault();
   const tab = tabs.get(active);
   const text = promptInput.value;
-  if (!tab || !text) return;
+  if (!tab) {
+    toast('Mở một phiên trước (bấm ＋)', 'error');
+    return;
+  }
+  if (!text) return;
   // Dán theo kiểu bracketed paste để xuống dòng không bị hiểu là Enter, rồi mới gửi Enter.
   send(tab, text.includes('\n') ? `\x1b[200~${text}\x1b[201~` : text);
   setTimeout(() => send(tab, '\r'), 80);
@@ -402,9 +551,16 @@ promptForm.addEventListener('submit', (e) => {
   autoGrow();
 });
 
-// ---------- Bố cục ----------
+// Chèn đường dẫn file (từ panel File) vào ô prompt, dạng @path mà Claude hiểu.
+function insertPath(rel) {
+  const v = promptInput.value;
+  promptInput.value = `${v}${v && !/\s$/.test(v) ? ' ' : ''}@${rel} `;
+  autoGrow();
+  if (isNarrow()) toggleSidebar(false);
+  promptInput.focus();
+}
 
-const isNarrow = () => matchMedia('(max-width: 760px)').matches;
+// ---------- Bố cục ----------
 
 function toggleSidebar(force) {
   document.body.classList.toggle('sidebar-open', force ?? !document.body.classList.contains('sidebar-open'));
@@ -412,11 +568,12 @@ function toggleSidebar(force) {
 }
 
 $('#btn-sidebar').addEventListener('click', () => toggleSidebar());
+$('#btn-back').addEventListener('click', () => { location.hash = '#/'; });
 $('#btn-refresh').addEventListener('click', refreshSessions);
-$('#btn-logout').addEventListener('click', async () => {
+document.querySelectorAll('.btn-logout').forEach((btn) => btn.addEventListener('click', async () => {
   await api('POST', '/api/logout').catch(() => {});
   location.href = '/login';
-});
+}));
 
 // Bàn phím điện thoại bật lên thì co app lại cho vừa phần nhìn thấy.
 function fitViewport() {
@@ -433,19 +590,14 @@ new ResizeObserver(() => {
 }).observe(terminalsEl);
 
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') refreshSessions();
+  if (document.visibilityState !== 'visible') return;
+  if (project) refreshSessions();
+  else if (!viewProjects.hidden) showProjects();
 });
 
 // ---------- Khởi động ----------
 
-(async () => {
-  if (!isNarrow()) document.body.classList.add('sidebar-open');
-  fitViewport();
-  await refreshSessions();
-  const names = new Set(sessions.map((s) => s.name));
-  for (const name of store.get('cpm.tabs', [])) if (names.has(name)) openTab(name);
-  const last = store.get('cpm.active', null);
-  if (last && tabs.has(last)) activate(last);
-  emptyEl.hidden = tabs.size > 0;
-  setInterval(refreshSessions, 10000);
-})();
+initFiles({ insertPath });
+initGit();
+fitViewport();
+route();

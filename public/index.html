@@ -11,72 +11,206 @@
 </head>
 <body>
   <div id="app">
-    <header class="topbar">
-      <button id="btn-sidebar" class="icon-btn" title="Danh sách phiên" aria-label="Danh sách phiên">☰</button>
-      <nav id="tabs" class="tabs" aria-label="Tab đang mở"></nav>
-      <button id="btn-new" class="primary-btn" title="Phiên mới">＋ Phiên mới</button>
-      <button id="btn-logout" class="icon-btn" title="Đăng xuất" aria-label="Đăng xuất">⏻</button>
-    </header>
-
-    <div class="body">
-      <aside id="sidebar" class="sidebar">
-        <div class="sidebar-head">
-          <strong>Phiên trên server</strong>
-          <button id="btn-refresh" class="icon-btn small" title="Làm mới">↻</button>
+    <!-- Màn chọn dự án -->
+    <section id="view-projects" class="view" hidden>
+      <header class="topbar">
+        <strong class="brand">Dự án</strong>
+        <span class="spacer"></span>
+        <button id="btn-git-settings" class="icon-btn" title="Cài đặt Git (SSH key, tên commit)" aria-label="Cài đặt Git">⚙</button>
+        <button class="icon-btn btn-logout" title="Đăng xuất" aria-label="Đăng xuất">⏻</button>
+      </header>
+      <div class="projects-body">
+        <div class="projects-head">
+          <input id="project-filter" name="filter" type="search" placeholder="Tìm dự án…" autocomplete="off" autocapitalize="none" spellcheck="false">
+          <button id="btn-new-project" class="primary-btn">＋ Dự án mới</button>
         </div>
-        <ul id="session-list" class="session-list"></ul>
-        <p class="hint">Đóng tab hay đóng web thì Claude vẫn chạy trên server. Bấm <b>Kết thúc</b> mới tắt hẳn phiên.</p>
-      </aside>
+        <ul id="project-list" class="project-list"></ul>
+        <p id="projects-root" class="muted small"></p>
+      </div>
+    </section>
 
-      <main class="main">
-        <div id="empty" class="empty">
-          <p>Chưa mở phiên nào.</p>
-          <p>Bấm <b>＋ Phiên mới</b> hoặc chọn một phiên trong danh sách.</p>
-        </div>
-        <div id="terminals" class="terminals"></div>
-        <div id="status" class="status" hidden></div>
+    <!-- Màn làm việc trong một dự án -->
+    <section id="view-workspace" class="view" hidden>
+      <header class="topbar">
+        <button id="btn-back" class="icon-btn" title="Về danh sách dự án" aria-label="Về danh sách dự án">←</button>
+        <button id="btn-sidebar" class="icon-btn" title="Phiên, File, Git" aria-label="Phiên, File, Git">☰</button>
+        <strong id="project-title" class="project-title"></strong>
+        <nav id="tabs" class="tabs" aria-label="Tab đang mở"></nav>
+        <button id="btn-new" class="primary-btn" title="Mở phiên mới">＋</button>
+        <button class="icon-btn btn-logout hide-narrow" title="Đăng xuất" aria-label="Đăng xuất">⏻</button>
+      </header>
 
-        <div id="mobile-bar" class="mobile-bar">
-          <div class="keys">
-            <button data-key="esc">Esc</button>
-            <button data-key="tab">Tab</button>
-            <button data-key="shift-tab">⇧Tab</button>
-            <button data-key="up">↑</button>
-            <button data-key="down">↓</button>
-            <button data-key="left">←</button>
-            <button data-key="right">→</button>
-            <button data-key="ctrl-c">^C</button>
-            <button data-key="enter">⏎</button>
-            <button id="font-down" title="Chữ nhỏ hơn">A−</button>
-            <button id="font-up" title="Chữ to hơn">A+</button>
+      <div class="body">
+        <aside id="sidebar" class="sidebar">
+          <div class="sidebar-title ellipsis" id="sidebar-title"></div>
+          <div class="panel-tabs" role="tablist">
+            <button data-panel="sessions" role="tab">Phiên</button>
+            <button data-panel="files" role="tab">File</button>
+            <button data-panel="git" role="tab">Git</button>
           </div>
-          <form id="prompt-form" class="prompt-form">
-            <textarea id="prompt-input" name="prompt" rows="1" autocomplete="off" placeholder="Gõ prompt… (Ctrl/⌘+Enter để gửi)" autocapitalize="sentences"></textarea>
-            <button type="submit" class="primary-btn">Gửi</button>
-          </form>
-        </div>
-      </main>
-    </div>
+
+          <div id="panel-sessions" class="panel">
+            <div class="panel-toolbar">
+              <span class="muted small grow">Phiên đang chạy trên server</span>
+              <button id="btn-refresh" class="icon-btn small" title="Làm mới" aria-label="Làm mới">↻</button>
+            </div>
+            <ul id="session-list" class="session-list"></ul>
+            <p class="hint">Đóng tab hay đóng web thì Claude vẫn chạy trên server. Bấm <b>Kết thúc</b> mới tắt hẳn phiên.</p>
+          </div>
+
+          <div id="panel-files" class="panel" hidden>
+            <div class="panel-toolbar">
+              <button id="files-up" title="Lên thư mục cha" aria-label="Lên thư mục cha">↑</button>
+              <button id="files-mkdir">＋ Thư mục</button>
+              <button id="files-upload">⇪ Upload</button>
+              <span class="grow"></span>
+              <button id="files-refresh" class="icon-btn small" title="Làm mới" aria-label="Làm mới">↻</button>
+              <input id="files-input" name="files" type="file" multiple hidden>
+            </div>
+            <nav id="files-crumbs" class="crumbs" aria-label="Đường dẫn"></nav>
+            <ul id="files-list" class="file-list"></ul>
+            <div id="files-progress" class="progress" hidden></div>
+            <p class="hint">Kéo thả file vào đây để upload. Bấm vào file để tải về, đổi tên, xóa hoặc chèn vào prompt.</p>
+          </div>
+
+          <div id="panel-git" class="panel" hidden>
+            <div id="git-norepo" class="pad" hidden>
+              <p class="muted">Dự án này chưa phải repo git.</p>
+              <button id="git-init">git init</button>
+            </div>
+            <div id="git-repo" hidden>
+              <div class="panel-toolbar">
+                <button data-git="fetch">Fetch</button>
+                <button data-git="pull">Pull</button>
+                <button data-git="push">Push</button>
+                <span class="grow"></span>
+                <button id="git-refresh" class="icon-btn small" title="Làm mới" aria-label="Làm mới">↻</button>
+              </div>
+              <div id="git-info" class="git-info"></div>
+              <pre id="git-job" class="job" hidden></pre>
+              <h3 class="section-title">Thay đổi (<span id="git-count">0</span>)</h3>
+              <ul id="git-changes" class="git-list"></ul>
+              <form id="git-commit-form" class="commit-form" hidden>
+                <textarea name="message" rows="2" placeholder="Nội dung commit" autocomplete="off"></textarea>
+                <button type="submit" class="primary-btn">Commit tất cả</button>
+              </form>
+              <h3 class="section-title">Commit gần đây</h3>
+              <ul id="git-log" class="git-list"></ul>
+            </div>
+          </div>
+        </aside>
+
+        <main class="main">
+          <div id="empty" class="empty">
+            <p>Chưa mở phiên nào.</p>
+            <p>Bấm <b>＋</b> để mở phiên Claude, hoặc chọn phiên trong danh sách.</p>
+          </div>
+          <div id="terminals" class="terminals"></div>
+          <div id="status" class="status" hidden></div>
+
+          <div id="mobile-bar" class="mobile-bar">
+            <div class="keys">
+              <button data-key="esc">Esc</button>
+              <button data-key="tab">Tab</button>
+              <button data-key="shift-tab">⇧Tab</button>
+              <button data-key="up">↑</button>
+              <button data-key="down">↓</button>
+              <button data-key="left">←</button>
+              <button data-key="right">→</button>
+              <button data-key="ctrl-c">^C</button>
+              <button data-key="enter">⏎</button>
+              <button id="font-down" title="Chữ nhỏ hơn">A−</button>
+              <button id="font-up" title="Chữ to hơn">A+</button>
+            </div>
+            <form id="prompt-form" class="prompt-form">
+              <textarea id="prompt-input" name="prompt" rows="1" autocomplete="off" placeholder="Gõ prompt… (Ctrl/⌘+Enter để gửi)" autocapitalize="sentences"></textarea>
+              <button type="submit" class="primary-btn">Gửi</button>
+            </form>
+          </div>
+        </main>
+      </div>
+    </section>
   </div>
 
+  <div id="toast" class="toast" role="status" hidden></div>
+
   <dialog id="dlg-new">
-    <form method="dialog" id="new-form">
-      <h2>Phiên mới</h2>
-      <label>Tên phiên
-        <input name="name" autocomplete="off" required pattern="[A-Za-z0-9_\-]{1,32}" autocapitalize="none" spellcheck="false">
+    <form method="dialog">
+      <h2>Mở phiên mới</h2>
+      <p class="muted small">Phiên chạy trong thư mục dự án và vẫn chạy khi anh đóng web.</p>
+      <div class="choice">
+        <button value="claude" class="primary-btn">✳ Claude</button>
+        <button value="shell">&gt;_ Terminal</button>
+      </div>
+      <div class="dlg-actions"><button value="cancel">Hủy</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-project">
+    <form method="dialog" id="project-form">
+      <h2>Dự án mới</h2>
+      <label>Clone từ git (để trống nếu tạo thư mục trống)
+        <input name="gitUrl" placeholder="git@github.com:user/repo.git" autocomplete="off" autocapitalize="none" spellcheck="false">
       </label>
-      <label>Thư mục làm việc
-        <input name="cwd" value="~" autocomplete="off" autocapitalize="none" spellcheck="false">
+      <label>Tên dự án (tên thư mục)
+        <input name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]{0,63}" autocomplete="off" autocapitalize="none" spellcheck="false">
       </label>
-      <fieldset>
-        <legend>Chạy</legend>
-        <label class="inline"><input type="radio" name="command" value="claude" checked> Claude</label>
-        <label class="inline"><input type="radio" name="command" value="shell"> Chỉ terminal</label>
-      </fieldset>
-      <p id="new-error" class="error" role="alert"></p>
+      <pre id="project-job" class="job" hidden></pre>
+      <p id="project-error" class="error" role="alert"></p>
       <div class="dlg-actions">
         <button value="cancel" formnovalidate>Hủy</button>
         <button value="ok" class="primary-btn">Tạo</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-git">
+    <form method="dialog" id="git-settings-form">
+      <h2>Cài đặt Git</h2>
+      <label>Tên hiện trong commit
+        <input name="name" autocomplete="off">
+      </label>
+      <label>Email hiện trong commit
+        <input name="email" type="email" autocomplete="off" autocapitalize="none">
+      </label>
+      <div class="ssh">
+        <strong>SSH key của server</strong>
+        <p class="muted small">Dùng để clone/push repo qua SSH. Thêm public key này vào GitHub → Settings → SSH keys (hoặc Deploy keys của từng repo).</p>
+        <div id="ssh-key-box" hidden>
+          <textarea id="ssh-key" name="sshKey" rows="3" readonly></textarea>
+          <button type="button" id="btn-ssh-copy">Copy</button>
+        </div>
+        <button type="button" id="btn-ssh-create" hidden>Tạo SSH key</button>
+      </div>
+      <p id="git-settings-error" class="error" role="alert"></p>
+      <div class="dlg-actions">
+        <button value="cancel" formnovalidate>Đóng</button>
+        <button value="ok" class="primary-btn">Lưu</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-entry">
+    <form method="dialog">
+      <h2 class="ellipsis"></h2>
+      <p id="entry-meta" class="muted small break"></p>
+      <div class="entry-actions">
+        <button value="download" id="entry-download">Tải về</button>
+        <button value="insert">Chèn vào prompt</button>
+        <button value="rename">Đổi tên</button>
+        <button value="delete" class="danger-btn">Xóa</button>
+      </div>
+      <div class="dlg-actions"><button value="cancel">Đóng</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-input">
+    <form method="dialog">
+      <h2></h2>
+      <input name="value" required autocomplete="off" autocapitalize="none" spellcheck="false">
+      <div class="dlg-actions">
+        <button value="cancel" formnovalidate>Hủy</button>
+        <button value="ok" id="input-ok" class="primary-btn">OK</button>
       </div>
     </form>
   </dialog>
@@ -86,13 +220,23 @@
       <p id="confirm-text"></p>
       <div class="dlg-actions">
         <button value="cancel">Hủy</button>
-        <button value="ok" class="danger-btn">Kết thúc phiên</button>
+        <button value="ok" id="confirm-ok" class="danger-btn">Đồng ý</button>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-view" class="dlg-wide">
+    <form method="dialog">
+      <div class="view-head">
+        <h2 class="ellipsis"></h2>
+        <button value="close" class="icon-btn" aria-label="Đóng">✕</button>
+      </div>
+      <pre class="diff"></pre>
     </form>
   </dialog>
 
   <script src="/vendor/xterm.js"></script>
   <script src="/vendor/addon-fit.js"></script>
-  <script src="/static/app.js"></script>
+  <script type="module" src="/static/app.js"></script>
 </body>
 </html>
