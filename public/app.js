@@ -2,7 +2,7 @@
 
 /* global Terminal, FitAddon */
 
-import { $, el, api, store, projectUrl, timeAgo, toast, confirmDialog, inputDialog, followJob, isTouch, isNarrow } from './common.js';
+import { $, el, api, store, projectUrl, timeAgo, toast, confirmDialog, inputDialog, followJob, isTouch, isNarrow, nativeApp } from './common.js';
 import { initFiles, setFilesProject, load as loadFiles } from './files.js';
 import { initGit, setGitProject, load as loadGit } from './gitpanel.js';
 
@@ -1061,6 +1061,12 @@ document.querySelectorAll('.btn-logout').forEach((btn) => btn.addEventListener('
   await api('POST', '/api/logout').catch(() => {});
   location.href = '/login';
 }));
+
+// Trong app mobile: nút quay về màn chọn server.
+document.querySelectorAll('.btn-switch-server').forEach((btn) => {
+  btn.hidden = !nativeApp;
+  btn.addEventListener('click', () => nativeApp?.post({ type: 'switchServer' }));
+});
 
 // Bàn phím điện thoại bật lên thì co app lại cho vừa phần nhìn thấy.
 function fitViewport() {

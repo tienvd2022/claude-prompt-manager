@@ -28,3 +28,10 @@ form.addEventListener('submit', async (e) => {
     button.disabled = false;
   }
 });
+
+// Trong app mobile (mobile/): quay về màn chọn server.
+const switchServer = document.getElementById('login-switch-server');
+if (window.ReactNativeWebView && window.CPM_APP) {
+  switchServer.hidden = false;
+  switchServer.addEventListener('click', () => window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'switchServer' })));
+}

@@ -1,5 +1,6 @@
 'use strict';
 
+const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -277,6 +278,30 @@ route('POST', '/api/projects/:p/sessions', async (req, res, p) => {
 
 route('GET', '/api/projects/:p/files', async (req, res, p, url) => sendJson(res, 200, await files.listDir(p, url.searchParams.get('path'))));
 route('GET', '/api/projects/:p/download', async (req, res, p, url) => files.download(res, p, url.searchParams.get('path')));
+// Link tải dùng một lần cho app mobile: phần native tải file không có cookie đăng nhập của WebView.
+const DOWNLOAD_TICKET_MS = 60 * 1000;
+const downloadTickets = new Map(); // token -> { project, path, expires }
+route('POST', '/api/projects/:p/download-ticket', async (req, res, p) => {
+  const body = await readJson(req);
+  projects.projectDir(p);
+  const now = Date.now();
+  for (const [t, v] of downloadTickets) if (v.expires < now) downloadTickets.delete(t);
+  const token = crypto.randomBytes(32).toString('base64url');
+  downloadTickets.set(token, { project: p, path: typeof body.path === 'string' ? body.path : '', expires: now + DOWNLOAD_TICKET_MS });
+  sendJson(res, 201, { url: `/api/download/${token}` });
+});
+
+async function handleTicketDownload(res, token) {
+  const ticket = downloadTickets.get(token);
+  downloadTickets.delete(token);
+  if (!ticket || ticket.expires < Date.now()) return sendJson(res, 404, { error: 'Link tải đã hết hạn' });
+  try {
+    await files.download(res, ticket.project, ticket.path);
+  } catch (err) {
+    apiError(res, err);
+  }
+}
+
 route('POST', '/api/projects/:p/upload', async (req, res, p, url) => {
   const q = url.searchParams;
   sendJson(res, 201, await files.upload(req, p, q.get('path'), q.get('name'), q.get('overwrite') === '1'));
@@ -346,6 +371,9 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === '/api/login' && req.method === 'POST') return await handleLogin(req, res);
+
+    const ticket = url.pathname.match(/^\/api\/download\/([\w-]+)$/);
+    if (ticket && req.method === 'GET') return await handleTicketDownload(res, ticket[1]);
 
     const sid = currentSession(req);
 
