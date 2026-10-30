@@ -614,8 +614,8 @@ const BAR_BUTTONS = {
   left: keyBtn('←', 'Mũi tên trái', 'left'),
   right: keyBtn('→', 'Mũi tên phải', 'right'),
   'ctrl-c': keyBtn('^C', 'Ctrl+C', 'ctrl-c'),
-  ctrl: { label: 'Ctrl', title: 'Giữ Ctrl cho phím gõ tiếp theo', run: () => armCtrl(!ctrlArmed) },
   enter: keyBtn('⏎', 'Enter', 'enter'),
+  ctrl: { label: 'Ctrl', title: 'Giữ Ctrl cho phím gõ tiếp theo', run: () => armCtrl(!ctrlArmed) },
   history: { label: '🕘', title: 'Lịch sử prompt', run: () => showHistory() },
   queue: { label: '📋', title: 'Hàng đợi prompt', run: () => showQueue() },
   text: { label: '📄', title: 'Xem/copy nội dung dạng chữ', run: () => showText() },
@@ -626,11 +626,17 @@ const BAR_BUTTONS = {
 const BAR_DEFAULT = Object.keys(BAR_BUTTONS);
 const keybarEl = $('#keybar');
 
-// Cấu hình lưu dạng [{ id, show }]; nút mới thêm sau này tự hiện ở cuối.
+// Cấu hình lưu dạng [{ id, show }]; nút mới thêm sau này chen vào sau nút đứng trước nó trong thứ tự mặc định.
+// Đổi thứ tự mặc định thì tăng KEYBAR_KEY để mọi máy dùng lại thứ tự mới.
+const KEYBAR_KEY = 'cpm.keybar.v2';
 function loadKeybar() {
-  const saved = store.get('cpm.keybar', null);
+  const saved = store.get(KEYBAR_KEY, null);
   const list = Array.isArray(saved) ? saved.filter((b) => BAR_BUTTONS[b?.id]) : [];
-  for (const id of BAR_DEFAULT) if (!list.some((b) => b.id === id)) list.push({ id, show: true });
+  BAR_DEFAULT.forEach((id, i) => {
+    if (list.some((b) => b.id === id)) return;
+    const prev = list.findIndex((b) => b.id === BAR_DEFAULT[i - 1]);
+    list.splice(prev + 1, 0, { id, show: true });
+  });
   return list;
 }
 let keybar = loadKeybar();
@@ -663,7 +669,7 @@ function renderKeybar() {
 }
 
 function saveKeybar() {
-  store.set('cpm.keybar', keybar);
+  store.set(KEYBAR_KEY, keybar);
   renderKeybar();
   renderKeybarEdit();
 }
