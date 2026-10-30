@@ -1001,6 +1001,12 @@ function toggleSidebar(force) {
 }
 
 $('#btn-sidebar').addEventListener('click', () => toggleSidebar());
+// Màn hình hẹp: menu đè lên terminal, chạm ra ngoài thì đóng (trừ khi đang ở hộp thoại mở từ menu).
+document.addEventListener('pointerdown', (e) => {
+  if (!isNarrow() || !document.body.classList.contains('sidebar-open')) return;
+  if (e.target.closest('#sidebar, #btn-sidebar, dialog')) return;
+  toggleSidebar(false);
+});
 $('#btn-back').addEventListener('click', () => { location.hash = '#/'; });
 $('#btn-refresh').addEventListener('click', refreshSessions);
 document.querySelectorAll('.btn-logout').forEach((btn) => btn.addEventListener('click', async () => {
