@@ -21,7 +21,7 @@ Luồng dùng: đăng nhập → chọn dự án → mở nhiều tab (mỗi tab
     { "name": "claude-fami", "description": "Tài khoản Fami" }
   ] }
   ```
-  Bấm nút Claude thường thì mở alias `default` (không ghi thì lấy alias đầu tiên); nhấn giữ nút Claude để chọn alias khác, bật/tắt bypass permissions và thêm tham số cho lệnh claude (vd `--resume <id>`, `--continue`, `--model opus`). Phiên chạy alias khác `claude` có thêm `(alias)` sau tên. Sửa file không cần restart.
+  Hộp mở phiên mới chọn sẵn alias `default` (không ghi thì lấy alias đầu tiên); đổi alias khác, bật/tắt bypass permissions và thêm tham số cho lệnh claude (vd `--resume <id>`, `--continue`, `--model opus`) ngay trong hộp. Terminal là nút nhỏ ở góc trên bên phải. Phiên chạy alias khác `claude` có thêm `(alias)` sau tên. Sửa file không cần restart.
 - Chạy dưới user thường, không cần root. Lệnh Claude chạy có đúng quyền của user đó.
 - **App mobile** (Android/iOS, React Native) ở [mobile/](mobile/README.md): nhập địa chỉ server rồi dùng y như bản web. Feature mới làm cho web thì app có luôn sau khi deploy server.
 

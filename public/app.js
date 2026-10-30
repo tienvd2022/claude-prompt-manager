@@ -434,16 +434,12 @@ async function confirmKill(s) {
   refreshSessions();
 }
 
-// Mở phiên mới: chọn Claude (auto mode) hoặc Terminal.
-// Bấm giữ (hoặc chuột phải) nút Claude để chọn alias Claude và bật bypass permissions.
+// Mở phiên mới: Claude (chọn alias, bypass permissions, tham số thêm) hoặc Terminal (nút nhỏ góc trên).
 const dlgNew = $('#dlg-new');
-const newClaudeBtn = $('#new-claude');
 const advancedBox = $('#new-advanced');
 const aliasSelect = $('#new-alias');
 const bypassInput = $('#new-bypass');
 const argsInput = $('#new-args');
-let holdTimer = null;
-let held = false;
 
 async function loadAliases() {
   try {
@@ -459,10 +455,10 @@ function syncBypass() {
   $('#new-bypass-warn').hidden = !bypassInput.checked;
   advancedBox.classList.toggle('danger', bypassInput.checked);
   $('#new-custom').className = bypassInput.checked ? 'danger-btn' : 'primary-btn';
-  $('#new-custom').textContent = bypassInput.checked ? '⚠ Mở Claude (bypass permissions)' : 'Mở Claude';
+  $('#new-custom').textContent = bypassInput.checked ? '⚠ Mở Claude (bypass permissions)' : '✳ Mở Claude';
 }
 bypassInput.addEventListener('change', syncBypass);
-// Enter trong ô tham số: mở Claude với tùy chọn đã chọn (mặc định form sẽ bấm nút Claude thường).
+// Enter trong ô tham số: mở Claude (mặc định form sẽ bấm nút đầu tiên là Terminal).
 argsInput.addEventListener('keydown', (e) => {
   if (e.key !== 'Enter' || e.isComposing) return;
   e.preventDefault();
@@ -471,42 +467,16 @@ argsInput.addEventListener('keydown', (e) => {
 
 $('#btn-new').addEventListener('click', () => {
   dlgNew.returnValue = '';
-  advancedBox.hidden = true;
   bypassInput.checked = false;
   argsInput.value = '';
   syncBypass();
-  dlgNew.showModal();
-});
-function showAdvanced() {
-  held = true;
-  advancedBox.hidden = false;
-  navigator.vibrate?.(30);
   loadAliases();
-}
-newClaudeBtn.addEventListener('pointerdown', () => {
-  held = false;
-  clearTimeout(holdTimer);
-  holdTimer = setTimeout(showAdvanced, 600);
-});
-for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) {
-  newClaudeBtn.addEventListener(ev, () => clearTimeout(holdTimer));
-}
-newClaudeBtn.addEventListener('contextmenu', (e) => {
-  e.preventDefault();
-  clearTimeout(holdTimer);
-  showAdvanced();
-});
-// Thả tay sau khi bấm giữ thì không mở phiên Claude thường.
-newClaudeBtn.addEventListener('click', (e) => {
-  if (held) {
-    e.preventDefault();
-    held = false;
-  }
+  dlgNew.showModal();
 });
 dlgNew.addEventListener('close', async () => {
   const choice = dlgNew.returnValue;
   let body;
-  if (choice === 'claude' || choice === 'shell') body = { command: choice };
+  if (choice === 'shell') body = { command: choice };
   else if (choice === 'claude-custom') body = { command: 'claude', alias: aliasSelect.value || undefined, bypass: bypassInput.checked, args: argsInput.value.trim() || undefined };
   else return;
   try {

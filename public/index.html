@@ -151,14 +151,12 @@
 
   <dialog id="dlg-new">
     <form method="dialog">
-      <h2>Mở phiên mới</h2>
-      <p class="muted small">Phiên chạy trong thư mục dự án và vẫn chạy khi anh đóng web.</p>
-      <div class="choice">
-        <button value="claude" id="new-claude" class="primary-btn">✳ Claude</button>
-        <button value="shell">&gt;_ Terminal</button>
+      <div class="dlg-head">
+        <h2>Mở phiên Claude</h2>
+        <button value="shell" class="small-btn" title="Mở terminal (shell) trong thư mục dự án">&gt;_ Terminal</button>
       </div>
-      <!-- Bấm giữ nút Claude mới hiện: chọn alias và bật bypass permissions -->
-      <div id="new-advanced" class="new-advanced" hidden>
+      <p class="muted small">Phiên chạy trong thư mục dự án và vẫn chạy khi anh đóng web.</p>
+      <div id="new-advanced" class="new-advanced">
         <label>Alias Claude
           <select id="new-alias" name="alias"></select>
         </label>
@@ -170,7 +168,7 @@
           <input id="new-args" name="args" placeholder="vd: --resume <id>, --continue, --model opus" autocomplete="off" autocapitalize="none" spellcheck="false">
         </label>
         <p id="new-bypass-warn" class="small danger-text" hidden>Claude tự chạy mọi lệnh, sửa/xóa file mà <b>không hỏi</b>. Chỉ dùng khi anh tin chắc việc cần làm.</p>
-        <button value="claude-custom" id="new-custom" class="primary-btn">Mở Claude</button>
+        <button value="claude-custom" id="new-custom" class="primary-btn" autofocus>✳ Mở Claude</button>
       </div>
       <div class="dlg-actions"><button value="cancel">Hủy</button></div>
     </form>
