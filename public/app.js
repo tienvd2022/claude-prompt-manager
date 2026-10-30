@@ -317,6 +317,7 @@ function closeProject() {
   for (const tab of [...tabs.values()]) disposeTab(tab);
   tabs.clear();
   active = null;
+  loadDraft(null);
   project = null;
   sessions = [];
   hideStatus();
@@ -502,6 +503,7 @@ dlgNew.addEventListener('close', async () => {
     const created = await api('POST', projectUrl(project, '/sessions'), body);
     // Tên phiên được dùng lại sau khi phiên cũ kết thúc: phiên mới không mang lịch sử prompt của phiên cũ.
     store.remove(historyKey(created.name));
+    removeDraft(created.name);
     await refreshSessions();
     openTab(created.name);
   } catch (err) {
@@ -579,6 +581,7 @@ function activate(name) {
     t.tabEl.classList.toggle('active', on);
   }
   emptyEl.hidden = tabs.size > 0;
+  if (name !== draftOf) loadDraft(name);
   const tab = tabs.get(name);
   if (tab) {
     requestAnimationFrame(() => {
@@ -613,6 +616,7 @@ function closeTab(name) {
     if (next) activate(next);
     else {
       active = null;
+      loadDraft(null);
       emptyEl.hidden = false;
       hideStatus();
     }
@@ -845,8 +849,7 @@ function showHistory() {
     text,
     onclick: () => {
       dlg.close();
-      promptInput.value = text;
-      autoGrow();
+      setPrompt(text);
       promptInput.focus();
     },
   }))));
@@ -963,8 +966,7 @@ function renderQueue() {
           queueItems.splice(i, 1);
           saveQueue();
           dlgQueue.close();
-          promptInput.value = item.text;
-          autoGrow();
+          setPrompt(item.text);
           promptInput.focus();
         },
       }),
@@ -1006,7 +1008,53 @@ function autoGrow() {
   promptInput.style.height = 'auto';
   promptInput.style.height = `${Math.min(promptInput.scrollHeight, 160)}px`;
 }
-promptInput.addEventListener('input', autoGrow);
+
+// Bản nháp ô prompt riêng từng phiên, giữ trong sessionStorage: đổi tab phiên là đổi luôn nội dung ô prompt.
+const draftKey = (name) => `cpm.draft.${name}`;
+let draftOf = null; // phiên đang sở hữu nội dung ô prompt
+
+function saveDraft() {
+  if (!draftOf) return;
+  try {
+    if (promptInput.value) sessionStorage.setItem(draftKey(draftOf), promptInput.value);
+    else sessionStorage.removeItem(draftKey(draftOf));
+  } catch {
+    // trình duyệt chặn storage thì bỏ qua
+  }
+}
+
+function loadDraft(name) {
+  saveDraft();
+  draftOf = name;
+  let text = '';
+  try {
+    text = (name && sessionStorage.getItem(draftKey(name))) || '';
+  } catch {
+    // như trên
+  }
+  promptInput.value = text;
+  autoGrow();
+}
+
+function removeDraft(name) {
+  try {
+    sessionStorage.removeItem(draftKey(name));
+  } catch {
+    // như trên
+  }
+}
+
+// Gán nội dung ô prompt bằng code (không phát sinh sự kiện input) thì lưu nháp luôn.
+function setPrompt(text) {
+  promptInput.value = text;
+  autoGrow();
+  saveDraft();
+}
+
+promptInput.addEventListener('input', () => {
+  autoGrow();
+  saveDraft();
+});
 promptInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();
@@ -1027,8 +1075,7 @@ promptForm.addEventListener('submit', (e) => {
   // Dán theo kiểu bracketed paste để xuống dòng không bị hiểu là Enter, rồi mới gửi Enter.
   send(tab, text.includes('\n') ? `\x1b[200~${text}\x1b[201~` : text);
   setTimeout(() => send(tab, '\r'), 80);
-  promptInput.value = '';
-  autoGrow();
+  setPrompt('');
 });
 
 $('#prompt-queue').addEventListener('click', async () => {
@@ -1039,8 +1086,9 @@ $('#prompt-queue').addEventListener('click', async () => {
   try {
     const { items } = await api('POST', queueUrl(s.name), { text });
     rememberPrompt(s.name, text);
-    promptInput.value = '';
-    autoGrow();
+    // Lúc chờ server có thể đã đổi sang tab khác: chỉ xóa nháp của phiên vừa xếp hàng.
+    if (draftOf === s.name) setPrompt('');
+    else removeDraft(s.name);
     toast(s.state === 'idle' ? 'Claude đang rảnh, gửi ngay' : `Đã xếp hàng (${items.length} prompt đang chờ)`);
   } catch (err) {
     toast(err.message, 'error');
@@ -1051,8 +1099,7 @@ $('#prompt-queue').addEventListener('click', async () => {
 // Chèn đường dẫn file (từ panel File) vào ô prompt, dạng @path mà Claude hiểu.
 function insertPath(rel) {
   const v = promptInput.value;
-  promptInput.value = `${v}${v && !/\s$/.test(v) ? ' ' : ''}@${rel} `;
-  autoGrow();
+  setPrompt(`${v}${v && !/\s$/.test(v) ? ' ' : ''}@${rel} `);
   if (isNarrow()) toggleSidebar(false);
   promptInput.focus();
 }
