@@ -112,6 +112,14 @@ function open(input) {
   return { name };
 }
 
+// Bỏ thư mục mở thêm khỏi danh sách gần đây (không xóa gì trên đĩa).
+function unlink(name) {
+  const links = loadLinks();
+  if (!links[name]) throw httpError(404, `"${name}" không phải thư mục mở thêm`);
+  delete links[name];
+  saveLinks(links);
+}
+
 // Liệt kê thư mục con để chọn thư mục mở làm dự án.
 async function browse(input, { hidden = false } = {}) {
   const dir = path.resolve(expandHome(typeof input === 'string' && input.trim() ? input.trim() : PROJECTS_DIR));
@@ -137,4 +145,4 @@ function create(name) {
   return { name };
 }
 
-module.exports = { PROJECTS_DIR, httpError, ensureRoot, validName, checkNewName, projectDir, list, create, open, browse };
+module.exports = { PROJECTS_DIR, httpError, ensureRoot, validName, checkNewName, projectDir, list, create, open, unlink, browse };

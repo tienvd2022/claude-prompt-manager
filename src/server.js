@@ -217,6 +217,17 @@ route('POST', '/api/projects', async (req, res) => {
 
 route('GET', '/api/browse', async (req, res, url) => sendJson(res, 200, await projects.browse(url.searchParams.get('path'), { hidden: url.searchParams.get('hidden') === '1' })));
 route('POST', '/api/projects/open', async (req, res) => sendJson(res, 200, projects.open((await readJson(req)).path)));
+route('GET', '/api/projects/linked', async (req, res) => {
+  const [list, all] = await Promise.all([projects.list(), tmux.list()]);
+  const linked = list.filter((p) => p.linked);
+  for (const p of linked) p.sessions = all.filter((s) => s.project === p.name).length;
+  sendJson(res, 200, { projects: linked });
+});
+route('DELETE', '/api/projects/:p/link', async (req, res, p) => {
+  if ((await tmux.list()).some((s) => s.project === p)) throw projects.httpError(409, 'Dự án còn phiên đang chạy, kết thúc phiên trước');
+  projects.unlink(p);
+  sendJson(res, 200, { ok: true });
+});
 route('GET', '/api/sessions', async (req, res) => sendJson(res, 200, { sessions: await tmux.list() }));
 route('DELETE', '/api/sessions/:name', async (req, res, name) => {
   if (!tmux.validName(name)) return sendJson(res, 400, { error: 'Tên phiên không hợp lệ' });

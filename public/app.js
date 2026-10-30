@@ -98,6 +98,7 @@ let browsing = null; // kết quả /api/browse đang hiển thị
 
 async function browseTo(target) {
   $('#browse-error').textContent = '';
+  $('#browse-recent').classList.remove('active');
   try {
     const hidden = $('#browse-hidden').checked ? '1' : '0';
     browsing = await api('GET', `/api/browse?path=${encodeURIComponent(target)}&hidden=${hidden}`);
@@ -116,6 +117,46 @@ async function browseTo(target) {
     : [el('li', { class: 'muted pad', text: 'Không có thư mục con.' })]));
 }
 
+// Danh sách thư mục đã mở thêm (data/projects.json), mới mở gần nhất lên đầu; ✕ bỏ khỏi danh sách.
+async function showRecentFolders() {
+  $('#browse-error').textContent = '';
+  let items;
+  try {
+    ({ projects: items } = await api('GET', '/api/projects/linked'));
+  } catch (err) {
+    $('#browse-error').textContent = err.message;
+    return;
+  }
+  $('#browse-recent').classList.add('active');
+  const recent = store.get('cpm.recent', {});
+  items.sort((a, b) => (recent[b.name] || 0) - (recent[a.name] || 0) || a.name.localeCompare(b.name));
+  $('#browse-list').replaceChildren(...(items.length
+    ? items.map((p) => el('li', { class: 'browse-row' },
+      el('button', { type: 'button', class: 'browse-item', disabled: p.missing, onclick: () => openRecentFolder(p) },
+        p.git ? el('span', { class: 'ico ico-branch', title: 'Có git' }) : el('span', { class: 'browse-ico', text: '📁' }),
+        el('span', { class: 'browse-recent-text' },
+          el('span', { text: p.name }),
+          el('span', { class: 'project-path', text: [p.path, p.missing ? 'không tìm thấy thư mục' : '', p.sessions ? `${p.sessions} phiên đang chạy` : '', recent[p.name] ? `mở ${timeAgo(recent[p.name])}` : ''].filter(Boolean).join(' · ') }))),
+      el('button', { type: 'button', class: 'icon-btn small', title: 'Bỏ khỏi danh sách (không xóa thư mục)', 'aria-label': 'Bỏ khỏi danh sách', text: '✕', onclick: () => unlinkFolder(p) })))
+    : [el('li', { class: 'muted pad', text: 'Chưa mở thư mục nào.' })]));
+}
+
+function openRecentFolder(p) {
+  dlgBrowse.close();
+  location.hash = `#/p/${encodeURIComponent(p.name)}`;
+}
+
+async function unlinkFolder(p) {
+  if (!(await confirmDialog(`Bỏ "${p.name}" khỏi danh sách gần đây?\n${p.path}\nThư mục trên server vẫn giữ nguyên.`, 'Bỏ'))) return;
+  try {
+    await api('DELETE', `/api/projects/${encodeURIComponent(p.name)}/link`);
+  } catch (err) {
+    $('#browse-error').textContent = err.message;
+    return;
+  }
+  showRecentFolders();
+}
+
 $('#btn-open-folder').addEventListener('click', () => {
   dlgBrowse.showModal();
   browseTo(store.get('cpm.browsePath', ''));
@@ -123,6 +164,7 @@ $('#btn-open-folder').addEventListener('click', () => {
 $('#browse-up').addEventListener('click', () => browsing?.parent && browseTo(browsing.parent));
 $('#browse-home').addEventListener('click', () => browseTo('~'));
 $('#browse-root').addEventListener('click', () => browseTo(''));
+$('#browse-recent').addEventListener('click', showRecentFolders);
 $('#browse-hidden').addEventListener('change', () => browseTo(browsing?.path || ''));
 $('#browse-form').addEventListener('submit', async (e) => {
   const action = e.submitter?.value;
