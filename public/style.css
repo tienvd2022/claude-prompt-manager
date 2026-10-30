@@ -293,6 +293,11 @@ dialog .job { margin: 0; }
 .terminals { flex: 1; min-height: 0; position: relative; }
 .term { position: absolute; inset: 0; padding: 4px 0 0 6px; display: none; }
 .term.visible { display: block; }
+.term { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.term-selbar { position: absolute; top: 8px; right: 8px; z-index: 5; display: flex; gap: 6px; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); box-shadow: 0 4px 14px rgba(0, 0, 0, .4); }
+.term-selbar[hidden] { display: none; }
+.term-selbar button { min-width: 44px; min-height: 36px; padding: 0 12px; }
+.term-selbar button:first-child { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
 .empty { position: absolute; inset: 0 0 auto; padding: 48px 16px; text-align: center; color: var(--muted); }
 .empty[hidden] { display: none; }
 

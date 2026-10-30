@@ -3,6 +3,7 @@
 /* global Terminal, FitAddon */
 
 import { $, el, api, store, projectUrl, timeAgo, toast, confirmDialog, inputDialog, followJob, isTouch, isNarrow, nativeApp } from './common.js';
+import { attachTouch } from './touchterm.js';
 import { initFiles, setFilesProject, load as loadFiles } from './files.js';
 import { initGit, setGitProject, load as loadGit } from './gitpanel.js';
 import { openBrowser } from './browserview.js';
@@ -548,6 +549,14 @@ function openTab(name) {
   terminalsEl.append(elTerm);
   const { term, fit } = makeTerminal();
   term.open(elTerm);
+  if (isTouch) {
+    attachTouch(term, elTerm, {
+      onCopy: async (text) => {
+        const ok = await copyText(text);
+        toast(ok ? 'Đã copy' : 'Trình duyệt chặn copy, mở 📄 để copy', ok ? undefined : 'error');
+      },
+    });
+  }
 
   const label = el('button', { class: 'tab-label', text: s ? sessionLabel(s) : name, title: name, onclick: () => activate(name) });
   const close = el('button', {
@@ -898,7 +907,7 @@ async function copyText(text) {
   } catch {
     const ta = el('textarea', { readonly: true, style: 'position:fixed;opacity:0' });
     ta.value = text;
-    dlgText.append(ta);
+    (dlgText.open ? dlgText : document.body).append(ta);
     ta.select();
     const ok = document.execCommand('copy');
     ta.remove();
