@@ -1,6 +1,6 @@
 // Panel git của dự án: nhánh, thay đổi, commit, lịch sử, fetch/pull/push và tự đồng bộ.
 
-import { $, el, api, projectUrl, timeAgo, toast, showText, followJob, store } from './common.js';
+import { $, el, api, projectUrl, timeAgo, toast, showText, followJob } from './common.js';
 import { openViewer } from './viewer.js';
 
 const infoEl = $('#git-info');
@@ -23,9 +23,10 @@ let view = 'changes';
 let commit = null; // commit đang xem chi tiết
 let lastStatus = null;
 
-// Tự đồng bộ: bật/tắt lưu riêng từng dự án trên trình duyệt.
-const syncKey = (p) => `cpm.gitAutoSync.${p}`;
+// Tự đồng bộ: mặc định tắt mỗi lần vào dự án, chỉ áp dụng cho nhánh lúc bật; đổi nhánh là tự tắt.
+// Bật lên thì pull một lần (nếu fast-forward được), sau đó chỉ push commit có sẵn, không bao giờ tự commit.
 let syncTimer = null;
+let syncBranch = null; // nhánh lúc bật tự đồng bộ
 let syncing = false;
 let pushTried = null; // HEAD đã thử tự push, để push lỗi thì không thử lại mãi
 let syncNote = '';
@@ -51,7 +52,7 @@ export function initGit() {
     if (name) switchBranch(name, true);
   });
   autoSyncBox.addEventListener('change', () => {
-    store.set(syncKey(project), autoSyncBox.checked);
+    syncBranch = lastStatus?.branch ?? null;
     syncNote = '';
     if (autoSyncBox.checked) startAutoSync();
     else stopAutoSync();
@@ -99,8 +100,13 @@ export function setGitProject(name) {
   pushTried = null;
   if (view === 'commit') view = 'log';
   showView();
-  autoSyncBox.checked = !!name && store.get(syncKey(name), false);
-  if (autoSyncBox.checked) startAutoSync();
+  turnOffSync();
+}
+
+function turnOffSync() {
+  stopAutoSync();
+  autoSyncBox.checked = false;
+  syncBranch = null;
 }
 
 export async function load() {
@@ -121,6 +127,14 @@ export async function load() {
 }
 
 function render(st) {
+  // Nhánh đổi (bấm đổi nhánh, hoặc Claude/terminal checkout): tắt tự đồng bộ.
+  if (autoSyncBox.checked) {
+    if (syncBranch == null) syncBranch = st.branch;
+    else if (st.branch !== syncBranch) {
+      turnOffSync();
+      toast(`Đã đổi sang nhánh ${st.branch || '?'}, tắt tự đồng bộ`);
+    }
+  }
   lastStatus = st;
   repoEl.hidden = !st.repo;
   noRepoEl.hidden = st.repo;
@@ -298,8 +312,8 @@ async function switchBranch(name, create) {
   }
   commit = null;
   if (view === 'commit') setView('log');
+  turnOffSync();
   await load();
-  if (autoSyncBox.checked) syncOnEnter();
 }
 
 // ---------- Fetch / pull / push ----------
@@ -372,7 +386,7 @@ function stopAutoSync() {
   syncTimer = null;
 }
 
-// Vừa vào dự án (hoặc vừa bật/đổi nhánh): fetch, pull nếu fast-forward được, rồi push nếu có commit mới.
+// Vừa bật tự đồng bộ: fetch, pull nếu fast-forward được, rồi push nếu có commit mới.
 async function syncOnEnter() {
   if (syncing || running) return;
   syncing = true;
@@ -381,9 +395,9 @@ async function syncOnEnter() {
     let st = await fetchStatus();
     if (!st?.repo || !st.remote) return note(st?.repo ? 'chưa có remote origin' : '', st);
     if (!st.upstream) return note('nhánh chưa có trên remote, bấm Push lần đầu', st);
-    if (!(await quietJob('fetch')) || current !== project) return;
+    if (!(await quietJob('fetch')) || current !== project || !syncTimer) return;
     st = await fetchStatus();
-    if (!st) return;
+    if (!st || !syncTimer) return;
     if (st.behind && st.ahead) return note(`nhánh đã tách (↑${st.ahead} ↓${st.behind}), cần xử lý tay`, st);
     if (st.behind) {
       if (await quietJob('pull')) {
@@ -406,7 +420,7 @@ async function syncTick() {
   syncing = true;
   try {
     const st = await fetchStatus();
-    if (!st?.repo || !st.upstream) return;
+    if (!syncTimer || !st?.repo || !st.upstream) return; // vừa đổi nhánh thì đã tắt
     if (st.ahead && st.behind) return note(`nhánh đã tách (↑${st.ahead} ↓${st.behind}), cần xử lý tay`, st);
     if (!st.ahead || st.behind || st.head === pushTried) return;
     pushTried = st.head;
