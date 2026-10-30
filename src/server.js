@@ -21,6 +21,7 @@ const git = require('./git');
 const projects = require('./projects');
 const queue = require('./queue');
 const tmux = require('./tmux');
+const { unwrap } = require('./unwrap');
 
 const PORT = Number(process.env.PORT || 4777);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -260,7 +261,10 @@ route('PATCH', '/api/sessions/:name', async (req, res, name) => {
 });
 route('GET', '/api/sessions/:name/text', async (req, res, name) => {
   await sessionOr404(name);
-  sendJson(res, 200, { text: await tmux.history(name, 10000, { plain: true }) });
+  const text = await tmux.history(name, 10000, { plain: true });
+  // Phiên Claude: nối lại các dòng Claude tự ngắt theo độ rộng màn hình lúc in.
+  const kind = (await tmux.list()).find((s) => s.name === name)?.kind;
+  sendJson(res, 200, { text: kind === 'shell' ? text : unwrap(text) });
 });
 route('DELETE', '/api/sessions/:name/browser', async (req, res, name) => {
   await sessionOr404(name);
