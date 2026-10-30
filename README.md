@@ -5,7 +5,7 @@ Web UI nhỏ để làm việc với Claude Code trên server, kể cả từ đ
 Luồng dùng: đăng nhập → chọn dự án → mở nhiều tab (mỗi tab là một phiên Claude hoặc terminal) → prompt.
 
 - **Dự án**: mọi dự án nằm trong một thư mục (`~/projects`, đổi bằng `PROJECTS_DIR`), mỗi dự án là một thư mục con. Tạo thư mục trống hoặc clone từ git.
-- **Mở thư mục bất kỳ**: nút 📂 ở trang Dự án để duyệt thư mục trên server và mở một thư mục con (vd chỗ có `.git`) hoặc thư mục nằm ngoài thư mục dự án. Thư mục này chỉ hiện trong danh sách dự án khi còn phiên đang chạy; kết thúc hết phiên thì ẩn, vào lại bằng 📂.
+- **Mở thư mục bất kỳ**: nút 📂 ở trang Dự án để duyệt thư mục trên server và mở một thư mục con (vd chỗ có `.git`) hoặc thư mục nằm ngoài thư mục dự án. Thư mục này chỉ hiện trong danh sách dự án khi còn phiên đang chạy; kết thúc hết phiên thì ẩn, vào lại bằng 📂 → "🕘 Gần đây" (✕ để bỏ thư mục khỏi danh sách gần đây, không xóa trên đĩa).
 - **Phiên**: mỗi tab là một session tmux (socket riêng `-L cpm`) chạy trong thư mục dự án. Đóng tab hay đóng web thì Claude vẫn chạy.
 - **File**: duyệt thư mục, upload (nút hoặc kéo thả), tải file/thư mục (.tar.gz), đổi tên, xóa, chèn `@đường-dẫn` vào prompt.
 - **Git**: xem thay đổi + diff, commit tất cả, lịch sử commit, fetch / pull (`--ff-only`) / push. Clone/push qua SSH dùng key của server.
