@@ -18,6 +18,7 @@ const auth = require('./auth');
 const browser = require('./browser');
 const files = require('./files');
 const git = require('./git');
+const preview = require('./preview');
 const gitAccounts = require('./gitaccounts');
 const projects = require('./projects');
 const queue = require('./queue');
@@ -53,6 +54,12 @@ for (const f of fs.readdirSync(path.join(ROOT, 'public'))) {
   if (TYPES[path.extname(f)]) STATIC[`/static/${f}`] = [`public/${f}`, TYPES[path.extname(f)]];
 }
 const PUBLIC_PATHS = new Set(['/login', '/static/style.css', '/static/login.js', '/static/favicon.svg']);
+// Script dùng trong trang preview (chạy ở origin sandbox, không có cookie): công khai, không chứa gì riêng tư.
+for (const f of fs.readdirSync(path.join(ROOT, 'public', 'preview-lib'))) {
+  if (!TYPES[path.extname(f)]) continue;
+  STATIC[`/preview-lib/${f}`] = [`public/preview-lib/${f}`, TYPES[path.extname(f)]];
+  PUBLIC_PATHS.add(`/preview-lib/${f}`);
+}
 
 function clientIp(req) {
   if (TRUST_PROXY) {
@@ -299,7 +306,7 @@ route('POST', '/api/projects/:p/sessions', async (req, res, p) => {
   const body = await readJson(req);
   const cwd = projects.projectDir(p);
   try {
-    sendJson(res, 201, await tmux.create({ project: p, cwd, command: body.command || 'claude', alias: body.alias, bypass: body.bypass === true, args: body.args, prepare: browser.prepare }));
+    sendJson(res, 201, await tmux.create({ project: p, cwd, command: body.command || 'claude', alias: body.alias, bypass: body.bypass === true, args: body.args, prepare: browser.prepare, prompt: preview.PROMPT }));
   } catch (err) {
     throw projects.httpError(400, err.stderr?.trim() || err.message);
   }
@@ -358,6 +365,16 @@ route('PUT', '/api/projects/:p/text', async (req, res, p) => {
   sendJson(res, 200, await files.writeText(p, body.path, body.text, body.mtime));
 });
 
+route('POST', '/api/projects/:p/preview/ticket', async (req, res, p, url, sid) => sendJson(res, 200, { base: `/preview/${preview.ticket(p, sid)}/` }));
+route('GET', '/api/projects/:p/preview/list', async (req, res, p) => sendJson(res, 200, preview.list(p)));
+route('GET', '/api/projects/:p/preview/stat', async (req, res, p, url) => sendJson(res, 200, preview.stat(p, url.searchParams.get('path'))));
+route('POST', '/api/projects/:p/preview/pdf', async (req, res, p, url, sid) => sendJson(res, 200, await preview.pdf(p, sid, (await readJson(req)).path)));
+route('POST', '/api/projects/:p/preview/shot', async (req, res, p, url, sid) => {
+  const png = await preview.shot(p, sid, await readJson(req));
+  res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': png.length });
+  res.end(png);
+});
+
 route('GET', '/api/projects/:p/git/status', async (req, res, p) => sendJson(res, 200, await git.status(p)));
 route('GET', '/api/projects/:p/git/log', async (req, res, p) => sendJson(res, 200, { commits: await git.log(p) }));
 route('GET', '/api/projects/:p/git/show', async (req, res, p, url) => sendJson(res, 200, { text: await git.show(p, url.searchParams.get('hash')) }));
@@ -396,7 +413,7 @@ route('GET', '/api/git/accounts/:alias/check', async (req, res, alias) => sendJs
 route('POST', '/api/git/accounts/:alias/key', async (req, res, alias) => sendJson(res, 201, await gitAccounts.createKey(alias)));
 route('POST', '/api/git/tokens', async (req, res) => sendJson(res, 200, await gitAccounts.saveToken(await readJson(req))));
 
-async function handleApi(req, res, url) {
+async function handleApi(req, res, url, sid) {
   for (const r of routes) {
     if (r.method !== req.method) continue;
     const m = url.pathname.match(r.re);
@@ -408,7 +425,7 @@ async function handleApi(req, res, url) {
       return sendJson(res, 400, { error: 'URL không hợp lệ' });
     }
     try {
-      return await r.handler(req, res, ...params, url);
+      return await r.handler(req, res, ...params, url, sid);
     } catch (err) {
       return apiError(res, err);
     }
@@ -431,6 +448,17 @@ const server = http.createServer(async (req, res) => {
     const ticket = url.pathname.match(/^\/api\/download\/([\w-]+)$/);
     if (ticket && req.method === 'GET') return await handleTicketDownload(res, ticket[1]);
 
+    const pv = url.pathname.match(/^\/preview\/([\w-]{20,})\/(.*)$/);
+    if (pv && (req.method === 'GET' || req.method === 'HEAD')) {
+      let rel;
+      try {
+        rel = decodeURIComponent(pv[2]);
+      } catch {
+        return sendJson(res, 400, { error: 'URL không hợp lệ' });
+      }
+      return await preview.serve(req, res, pv[1], rel, (s) => sessions.valid(s));
+    }
+
     const sid = currentSession(req);
 
     if (url.pathname === '/login' && sid) return redirect(res, '/');
@@ -439,7 +467,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === '/api/logout' && req.method === 'POST') return handleLogout(req, res, sid);
-    if (isApi) return await handleApi(req, res, url);
+    if (isApi) return await handleApi(req, res, url, sid);
 
     const file = STATIC[url.pathname];
     if (file && (req.method === 'GET' || req.method === 'HEAD')) return sendStatic(res, ...file);
@@ -546,6 +574,7 @@ function onBrowser(ws, sid, name) {
 projects.ensureRoot();
 queue.start();
 browser.start();
+preview.setBase(HOST, PORT);
 server.listen(PORT, HOST, () => {
   console.log(`claude-prompt-manager chạy tại http://${HOST}:${PORT} (tmux socket: ${tmux.SOCKET}, dự án: ${projects.PROJECTS_DIR})`);
 });

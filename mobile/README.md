@@ -63,6 +63,6 @@ Với Apple ID miễn phí, app hết hạn sau 7 ngày (cài lại là chạy t
 | `src/download.ts` | Tải file bằng link dùng một lần (web xin ở `POST /api/projects/:p/download-ticket`) |
 
 Web nhận biết đang chạy trong app qua `window.CPM_APP` (app tiêm vào) và `nativeApp` trong `public/common.js`.
-Tin nhắn web → app: `{ type: 'download', url, name }`, `{ type: 'switchServer' }`. Feature web mới nào cần thứ WebView không tự làm được (tải file, chia sẻ, mở cửa sổ…) thì thêm loại tin nhắn mới ở đây.
+Tin nhắn web → app (xuất PDF ở khung Preview cũng tải qua `download`): `{ type: 'download', url, name }`, `{ type: 'switchServer' }`. Feature web mới nào cần thứ WebView không tự làm được (tải file, chia sẻ, mở cửa sổ…) thì thêm loại tin nhắn mới ở đây.
 
 Sửa tên app: `android/app/src/main/res/values/strings.xml`, `ios/CPMMobile/Info.plist` (`CFBundleDisplayName`). Tăng phiên bản: `versionCode`/`versionName` trong `android/app/build.gradle`, `MARKETING_VERSION`/`CURRENT_PROJECT_VERSION` trong Xcode.

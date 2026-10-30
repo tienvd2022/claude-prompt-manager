@@ -212,6 +212,13 @@ const PASTE_DIR = '.cpm/paste';
 const PASTE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/heic': 'heic' };
 const PASTE_KEEP_MS = 7 * 24 * 3600 * 1000;
 
+function excludeCpm(root) {
+  const exclude = path.join(root, '.git', 'info', 'exclude');
+  if (!fs.existsSync(path.dirname(exclude))) return;
+  const cur = fs.readFileSync(exclude, { encoding: 'utf8', flag: 'a+' });
+  if (!/^\/?\.cpm\/?$/m.test(cur)) fs.appendFileSync(exclude, `${cur && !cur.endsWith('\n') ? '\n' : ''}/.cpm/\n`);
+}
+
 async function savePaste(req, project) {
   const ext = PASTE_TYPES[String(req.headers['content-type']).split(';')[0].trim()];
   if (!ext) throw httpError(415, 'Chỉ dán được ảnh PNG, JPEG, GIF, WebP, HEIC');
@@ -219,11 +226,7 @@ async function savePaste(req, project) {
   await fs.promises.mkdir(path.join(root, PASTE_DIR), { recursive: true });
   const { full: dir } = resolve(project, PASTE_DIR);
 
-  const exclude = path.join(root, '.git', 'info', 'exclude');
-  if (fs.existsSync(path.dirname(exclude))) {
-    const cur = fs.readFileSync(exclude, { encoding: 'utf8', flag: 'a+' });
-    if (!/^\/?\.cpm\/?$/m.test(cur)) fs.appendFileSync(exclude, `${cur && !cur.endsWith('\n') ? '\n' : ''}/.cpm/\n`);
-  }
+  excludeCpm(root);
 
   // Dọn ảnh cũ để thư mục không phình mãi.
   const now = Date.now();
@@ -261,4 +264,4 @@ async function remove(project, rel) {
   await fs.promises.rm(full, { recursive: true });
 }
 
-module.exports = { MAX_UPLOAD, MAX_TEXT, imageType, sendImage, image, readText, writeText, listDir, download, upload, savePaste, mkdir, rename, remove };
+module.exports = { resolve, excludeCpm, MAX_UPLOAD, MAX_TEXT, imageType, sendImage, image, readText, writeText, listDir, download, upload, savePaste, mkdir, rename, remove };

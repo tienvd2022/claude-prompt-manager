@@ -14,9 +14,11 @@ const fileInput = $('#files-input');
 let project = null;
 let cwd = '';
 let onInsert = () => {};
+let onPreview = () => {};
 
-export function initFiles({ insertPath }) {
+export function initFiles({ insertPath, openPreview }) {
   onInsert = insertPath;
+  onPreview = openPreview;
   $('#files-up').addEventListener('click', () => {
     if (cwd) load(cwd.split('/').slice(0, -1).join('/'));
   });
@@ -145,18 +147,20 @@ function entryActions(entry, rel) {
   $('h2', dlg).textContent = entry.name;
   $('#entry-meta', dlg).textContent = isDir ? `Thư mục · ${rel}` : `${formatSize(entry.size)} · sửa ${timeAgo(entry.mtime)} · ${rel}`;
   $('#entry-download', dlg).textContent = isDir ? 'Tải về (.tar.gz)' : 'Tải về';
+  $('#entry-preview', dlg).hidden = isDir || !/\.(html?|svg)$/i.test(rel);
   dlg.returnValue = '';
   dlg.showModal();
   dlg.addEventListener('close', async () => {
     const action = dlg.returnValue;
     if (action === 'download') download(rel, isDir);
     else if (action === 'insert') onInsert(isDir ? `${rel}/` : rel);
+    else if (action === 'preview') onPreview(rel);
     else if (action === 'rename') renameEntry(entry, rel);
     else if (action === 'delete') deleteEntry(entry, rel);
   }, { once: true });
 }
 
-async function download(rel, isDir) {
+export async function download(rel, isDir = false) {
   if (nativeApp) {
     // WebView không tự tải file: xin link tải dùng một lần rồi để app native tải, lưu/chia sẻ.
     try {
