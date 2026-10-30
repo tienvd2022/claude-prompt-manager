@@ -1198,6 +1198,22 @@ promptImage.addEventListener('change', () => {
 });
 $('#prompt-sketch').addEventListener('click', () => openSketch());
 
+// Màn hẹp: 📎 🎨 ⏳ gom vào menu nút ＋ (CSS quyết định), bấm một mục thì đóng menu.
+const promptMore = $('#prompt-more');
+const promptTools = $('#prompt-tools');
+function setToolsOpen(on) {
+  promptTools.classList.toggle('open', on);
+  promptMore.setAttribute('aria-expanded', String(on));
+}
+promptMore.addEventListener('pointerdown', (e) => e.preventDefault()); // giữ bàn phím nếu đang gõ
+promptMore.addEventListener('click', () => setToolsOpen(!promptTools.classList.contains('open')));
+promptTools.addEventListener('pointerdown', (e) => e.preventDefault());
+promptTools.addEventListener('click', (e) => e.target.closest('button') && setToolsOpen(false));
+document.addEventListener('pointerdown', (e) => {
+  if (!e.target.closest('#prompt-tools, #prompt-more')) setToolsOpen(false);
+});
+if (isTouch) promptInput.placeholder = 'Gõ prompt… (gõ / để chọn lệnh)';
+
 // ---------- Bố cục ----------
 
 function toggleSidebar(force) {

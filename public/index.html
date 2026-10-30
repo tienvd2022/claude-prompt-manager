@@ -156,12 +156,16 @@
             <div id="keybar" class="keys"></div>
             <ul id="slash-menu" class="slash-menu" role="listbox" hidden></ul>
             <form id="prompt-form" class="prompt-form">
-              <button type="button" id="prompt-attach" class="icon-btn" title="Đính kèm ảnh" aria-label="Đính kèm ảnh">📎</button>
+              <!-- Màn rộng: các nút nằm cạnh ô prompt; màn hẹp: gom vào menu của nút ＋ cho ô prompt rộng ra -->
+              <button type="button" id="prompt-more" class="icon-btn prompt-more" title="Thêm" aria-label="Thêm" aria-expanded="false">＋</button>
+              <div id="prompt-tools" class="prompt-tools">
+                <button type="button" id="prompt-attach" class="icon-btn" title="Đính kèm ảnh" aria-label="Đính kèm ảnh">📎<span class="pt-label">Đính kèm ảnh</span></button>
+                <button type="button" id="prompt-sketch" class="icon-btn" title="Vẽ phác rồi gửi kèm prompt" aria-label="Vẽ phác">🎨<span class="pt-label">Vẽ phác</span></button>
+                <button type="button" id="prompt-queue" class="pt-queue" title="Thêm vào hàng đợi (tự gửi khi Claude xong)" aria-label="Thêm vào hàng đợi">⏳<span class="pt-label">Xếp hàng đợi (tự gửi khi Claude xong)</span></button>
+              </div>
               <input id="prompt-image" type="file" accept="image/*" multiple hidden>
-              <button type="button" id="prompt-sketch" class="icon-btn" title="Vẽ phác rồi gửi kèm prompt" aria-label="Vẽ phác">🎨</button>
               <!-- Không đặt autocomplete="off": Chrome Android sẽ báo bàn phím tắt gợi ý, Gboard ẩn luôn nút mic -->
               <textarea id="prompt-input" name="prompt" rows="1" placeholder="Gõ prompt… (dán ảnh được, Ctrl/⌘+Enter để gửi)" autocapitalize="sentences"></textarea>
-              <button type="button" id="prompt-queue" title="Thêm vào hàng đợi (tự gửi khi Claude xong)" aria-label="Thêm vào hàng đợi">⏳</button>
               <button type="submit" class="primary-btn">Gửi</button>
             </form>
           </div>
