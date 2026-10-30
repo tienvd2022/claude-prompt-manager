@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Claude Prompt Manager</title>
+  <link rel="icon" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/vendor/xterm.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <button id="btn-sidebar" class="icon-btn" title="Danh sách phiên" aria-label="Danh sách phiên">☰</button>
+      <nav id="tabs" class="tabs" aria-label="Tab đang mở"></nav>
+      <button id="btn-new" class="primary-btn" title="Phiên mới">＋ Phiên mới</button>
+      <button id="btn-logout" class="icon-btn" title="Đăng xuất" aria-label="Đăng xuất">⏻</button>
+    </header>
+
+    <div class="body">
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-head">
+          <strong>Phiên trên server</strong>
+          <button id="btn-refresh" class="icon-btn small" title="Làm mới">↻</button>
+        </div>
+        <ul id="session-list" class="session-list"></ul>
+        <p class="hint">Đóng tab hay đóng web thì Claude vẫn chạy trên server. Bấm <b>Kết thúc</b> mới tắt hẳn phiên.</p>
+      </aside>
+
+      <main class="main">
+        <div id="empty" class="empty">
+          <p>Chưa mở phiên nào.</p>
+          <p>Bấm <b>＋ Phiên mới</b> hoặc chọn một phiên trong danh sách.</p>
+        </div>
+        <div id="terminals" class="terminals"></div>
+        <div id="status" class="status" hidden></div>
+
+        <div id="mobile-bar" class="mobile-bar">
+          <div class="keys">
+            <button data-key="esc">Esc</button>
+            <button data-key="tab">Tab</button>
+            <button data-key="shift-tab">⇧Tab</button>
+            <button data-key="up">↑</button>
+            <button data-key="down">↓</button>
+            <button data-key="left">←</button>
+            <button data-key="right">→</button>
+            <button data-key="ctrl-c">^C</button>
+            <button data-key="enter">⏎</button>
+            <button id="font-down" title="Chữ nhỏ hơn">A−</button>
+            <button id="font-up" title="Chữ to hơn">A+</button>
+          </div>
+          <form id="prompt-form" class="prompt-form">
+            <textarea id="prompt-input" name="prompt" rows="1" autocomplete="off" placeholder="Gõ prompt… (Ctrl/⌘+Enter để gửi)" autocapitalize="sentences"></textarea>
+            <button type="submit" class="primary-btn">Gửi</button>
+          </form>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <dialog id="dlg-new">
+    <form method="dialog" id="new-form">
+      <h2>Phiên mới</h2>
+      <label>Tên phiên
+        <input name="name" autocomplete="off" required pattern="[A-Za-z0-9_\-]{1,32}" autocapitalize="none" spellcheck="false">
+      </label>
+      <label>Thư mục làm việc
+        <input name="cwd" value="~" autocomplete="off" autocapitalize="none" spellcheck="false">
+      </label>
+      <fieldset>
+        <legend>Chạy</legend>
+        <label class="inline"><input type="radio" name="command" value="claude" checked> Claude</label>
+        <label class="inline"><input type="radio" name="command" value="shell"> Chỉ terminal</label>
+      </fieldset>
+      <p id="new-error" class="error" role="alert"></p>
+      <div class="dlg-actions">
+        <button value="cancel" formnovalidate>Hủy</button>
+        <button value="ok" class="primary-btn">Tạo</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-confirm">
+    <form method="dialog">
+      <p id="confirm-text"></p>
+      <div class="dlg-actions">
+        <button value="cancel">Hủy</button>
+        <button value="ok" class="danger-btn">Kết thúc phiên</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="/vendor/xterm.js"></script>
+  <script src="/vendor/addon-fit.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

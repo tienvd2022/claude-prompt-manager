@@ -1,0 +1,24 @@
+# systemd user service — cài bằng deploy/install.sh (không cần root).
+[Unit]
+Description=Claude Prompt Manager (web UI cho các phiên Claude trong tmux)
+After=network-online.target
+
+[Service]
+WorkingDirectory=__APP_DIR__
+ExecStart=/usr/bin/env node src/server.js
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=4777
+Environment=TRUST_PROXY=1
+Restart=always
+RestartSec=3
+# Restart web không được giết tmux: các phiên Claude phải chạy tiếp.
+KillMode=process
+# Giới hạn tài nguyên cho cả web lẫn các phiên Claude, để không ảnh hưởng website trên server.
+MemoryHigh=1200M
+MemoryMax=1500M
+CPUWeight=20
+Nice=5
+
+[Install]
+WantedBy=default.target

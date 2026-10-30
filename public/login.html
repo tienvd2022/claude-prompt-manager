@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Claude Prompt Manager</title>
+  <link rel="icon" href="/static/favicon.svg">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="login-page">
+  <form id="login-form" class="login-card" autocomplete="on">
+    <h1>Claude Prompt Manager</h1>
+    <label>Tên đăng nhập
+      <input name="username" autocomplete="username" required autofocus autocapitalize="none" spellcheck="false">
+    </label>
+    <label>Mật khẩu
+      <input name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button type="submit">Đăng nhập</button>
+    <p id="login-error" class="error" role="alert"></p>
+  </form>
+  <script src="/static/login.js"></script>
+</body>
+</html>
