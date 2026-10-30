@@ -14,6 +14,11 @@ export function el(tag, props = {}, ...children) {
   return node;
 }
 
+// Có dialog đang mở thì gắn class modal-open lên <html> (style.css khóa cuộn trang phía sau).
+new MutationObserver(() => {
+  document.documentElement.classList.toggle('modal-open', !!document.querySelector('dialog[open]'));
+}).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['open'] });
+
 // Đang chạy trong app mobile (mobile/, WebView) thì gửi được tin nhắn sang phần native.
 export const nativeApp = window.ReactNativeWebView && window.CPM_APP
   ? { ...window.CPM_APP, post: (msg) => window.ReactNativeWebView.postMessage(JSON.stringify(msg)) }
@@ -78,6 +83,17 @@ export function formatSize(n) {
 
 export const isTouch = matchMedia('(pointer: coarse)').matches;
 export const isNarrow = () => matchMedia('(max-width: 760px)').matches;
+
+// Điện thoại (dialog là bottom sheet): chạm vào vùng tối phía trên sheet thì đóng, đi qua sự kiện cancel như phím Esc
+// để dialog nào cần hỏi trước khi bỏ (vd vẽ phác) vẫn hỏi được.
+document.addEventListener('click', (e) => {
+  const dlg = e.target;
+  if (!(dlg instanceof HTMLDialogElement) || !dlg.open || !isNarrow()) return;
+  const r = dlg.getBoundingClientRect();
+  if (e.clientY >= r.top) return;
+  if (dlg.requestClose) dlg.requestClose();
+  else if (dlg.dispatchEvent(new Event('cancel', { cancelable: true }))) dlg.close();
+});
 
 // ---------- Thông báo nhanh ----------
 

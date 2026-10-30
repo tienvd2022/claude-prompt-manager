@@ -274,8 +274,10 @@ route('PATCH', '/api/sessions/:name', async (req, res, name) => {
   }
   sendJson(res, 200, { ok: true });
 });
-route('GET', '/api/sessions/:name/text', async (req, res, name) => {
+route('GET', '/api/sessions/:name/text', async (req, res, name, url) => {
   await sessionOr404(name);
+  // ?ansi=1: giữ màu và đúng từng dòng như trên terminal, để hiện giống terminal (không nối dòng).
+  if (url.searchParams.get('ansi') === '1') return sendJson(res, 200, { text: await tmux.history(name, 10000, { plain: true, colors: true }) });
   const text = await tmux.history(name, 10000, { plain: true });
   // Phiên Claude: nối lại các dòng Claude tự ngắt theo độ rộng màn hình lúc in.
   const kind = (await tmux.list()).find((s) => s.name === name)?.kind;
