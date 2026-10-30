@@ -9,7 +9,7 @@
     "set-password": "node scripts/set-password.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=20.12"
   },
   "dependencies": {
     "@xterm/addon-fit": "0.10.0",

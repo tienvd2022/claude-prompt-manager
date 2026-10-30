@@ -3,6 +3,15 @@
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+
+// Đọc .env ở thư mục gốc (nếu có) trước khi các module khác đọc process.env.
+// Biến đã có sẵn trong môi trường (systemd, dòng lệnh) được ưu tiên hơn .env.
+try {
+  process.loadEnvFile(path.join(__dirname, '..', '.env'));
+} catch (err) {
+  if (err.code !== 'ENOENT') throw err;
+}
+
 const { WebSocketServer } = require('ws');
 const auth = require('./auth');
 const files = require('./files');

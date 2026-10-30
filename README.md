@@ -22,7 +22,7 @@ Luồng dùng: đăng nhập → chọn dự án → mở nhiều tab (mỗi tab
 
 ## Cài trên server
 
-Hướng dẫn đầy đủ từng bước, kèm xử lý sự cố: [DEPLOY.md](DEPLOY.md). Tóm tắt:
+Hướng dẫn đầy đủ từng bước, kèm xử lý sự cố: [docs/guide/DEPLOY.md](docs/guide/DEPLOY.md). Tóm tắt:
 
 ```bash
 # 1 lần, bằng root: cho service của user chạy cả khi chưa đăng nhập
@@ -60,7 +60,20 @@ Host lạ được tự chấp nhận lần đầu (`StrictHostKeyChecking=accep
 | Đổi mật khẩu web | `npm run set-password` rồi `systemctl --user restart claude-prompt-manager` |
 | Xem log | `journalctl --user -u claude-prompt-manager -f` |
 | Vào phiên từ SSH | `tmux -L cpm ls`, `tmux -L cpm attach -t <tên>` (thoát: `Ctrl+b d`) |
-| Domain, giới hạn upload, thư mục dự án | ghi `ALLOWED_ORIGINS=...`, `MAX_UPLOAD_MB=...`, `PROJECTS_DIR=...` vào `~/.config/claude-prompt-manager.env` rồi restart |
+| Domain, giới hạn upload, thư mục dự án | ghi `ALLOWED_ORIGINS=...`, `MAX_UPLOAD_MB=...`, `PROJECTS_DIR=...` vào `~/.config/claude-prompt-manager.env` (hoặc `.env` trong thư mục app) rồi restart |
 | Đổi cổng/giới hạn RAM | sửa `deploy/claude-prompt-manager.service` rồi chạy lại `install.sh` |
 
-Chạy thử ở máy cá nhân (không HTTPS): `COOKIE_SECURE=0 npm start`.
+## Chạy trên máy cá nhân (Mac/Linux)
+
+Cần Node ≥ 20.12, tmux (`brew install tmux`), Claude Code, công cụ build cho `node-pty` (Mac: Xcode Command Line Tools).
+
+```bash
+npm ci
+npm run set-password
+cp .env.example .env      # sửa PROJECTS_DIR, bật COOKIE_SECURE=0
+npm start                 # mở http://localhost:4777
+```
+
+Cấu hình nằm trong `.env` (xem `.env.example` cho đủ các biến). Biến đặt từ ngoài, ví dụ `PORT=4800 npm start`, được ưu tiên hơn `.env`.
+
+Lưu ý khi chạy trên máy cá nhân: cài đặt Git trong ⚙ ghi vào `git config --global` thật của máy; nút Xóa trong file manager là xóa hẳn, không vào Thùng rác.
