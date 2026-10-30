@@ -594,6 +594,41 @@ function insertPath(rel) {
   promptInput.focus();
 }
 
+// Ảnh dán hoặc đính kèm: upload vào .cpm/paste của dự án rồi chèn @đường-dẫn vào prompt.
+async function attachImages(list) {
+  const images = list.filter((f) => f.type.startsWith('image/'));
+  if (!images.length) return;
+  if (!project) {
+    toast('Chọn dự án trước', 'error');
+    return;
+  }
+  for (const file of images) {
+    try {
+      const res = await fetch(projectUrl(project, '/paste'), { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
+      if (res.status === 401) location.href = '/login';
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || (res.status === 413 ? 'Ảnh quá lớn' : `Lỗi ${res.status}`));
+      insertPath(data.path);
+    } catch (err) {
+      toast(`Không gửi được ảnh: ${err.message}`, 'error');
+    }
+  }
+}
+
+promptInput.addEventListener('paste', (e) => {
+  const list = [...(e.clipboardData?.files || [])];
+  if (!list.some((f) => f.type.startsWith('image/'))) return;
+  e.preventDefault();
+  attachImages(list);
+});
+
+const promptImage = $('#prompt-image');
+$('#prompt-attach').addEventListener('click', () => promptImage.click());
+promptImage.addEventListener('change', () => {
+  attachImages([...promptImage.files]);
+  promptImage.value = '';
+});
+
 // ---------- Bố cục ----------
 
 function toggleSidebar(force) {

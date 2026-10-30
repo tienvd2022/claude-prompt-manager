@@ -154,6 +154,38 @@ async function upload(req, project, dirRel, name, overwrite) {
   return { name, size: fs.statSync(target).size };
 }
 
+// Ảnh dán vào ô prompt: lưu trong .cpm/paste của dự án để Claude đọc được mà không cần quyền
+// ngoài thư mục dự án; .cpm/ được thêm vào .git/info/exclude để không lẫn vào commit.
+const PASTE_DIR = '.cpm/paste';
+const PASTE_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'image/heic': 'heic' };
+const PASTE_KEEP_MS = 7 * 24 * 3600 * 1000;
+
+async function savePaste(req, project) {
+  const ext = PASTE_TYPES[String(req.headers['content-type']).split(';')[0].trim()];
+  if (!ext) throw httpError(415, 'Chỉ dán được ảnh PNG, JPEG, GIF, WebP, HEIC');
+  const root = fs.realpathSync(projectDir(project));
+  await fs.promises.mkdir(path.join(root, PASTE_DIR), { recursive: true });
+  const { full: dir } = resolve(project, PASTE_DIR);
+
+  const exclude = path.join(root, '.git', 'info', 'exclude');
+  if (fs.existsSync(path.dirname(exclude))) {
+    const cur = fs.readFileSync(exclude, { encoding: 'utf8', flag: 'a+' });
+    if (!/^\/?\.cpm\/?$/m.test(cur)) fs.appendFileSync(exclude, `${cur && !cur.endsWith('\n') ? '\n' : ''}/.cpm/\n`);
+  }
+
+  // Dọn ảnh cũ để thư mục không phình mãi.
+  const now = Date.now();
+  for (const f of await fs.promises.readdir(dir)) {
+    const st = fs.lstatSync(path.join(dir, f), { throwIfNoEntry: false });
+    if (st?.isFile() && now - st.mtimeMs > PASTE_KEEP_MS) fs.rmSync(path.join(dir, f), { force: true });
+  }
+
+  const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+  const name = `${stamp}-${crypto.randomBytes(3).toString('hex')}.${ext}`;
+  await upload(req, project, PASTE_DIR, name, false);
+  return { path: `${PASTE_DIR}/${name}` };
+}
+
 async function mkdir(project, dirRel, name) {
   checkEntryName(name);
   const { full: dir } = resolve(project, dirRel);
@@ -177,4 +209,4 @@ async function remove(project, rel) {
   await fs.promises.rm(full, { recursive: true });
 }
 
-module.exports = { MAX_UPLOAD, listDir, download, upload, mkdir, rename, remove };
+module.exports = { MAX_UPLOAD, listDir, download, upload, savePaste, mkdir, rename, remove };
