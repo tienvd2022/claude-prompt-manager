@@ -68,7 +68,7 @@ function renderProjects() {
   const q = $('#project-filter').value.trim().toLowerCase();
   const recent = store.get('cpm.recent', {});
   const items = projectList
-    .filter((p) => !q || p.name.toLowerCase().includes(q))
+    .filter((p) => !q || p.name.toLowerCase().includes(q) || p.path?.toLowerCase().includes(q))
     .sort((a, b) => (recent[b.name] || 0) - (recent[a.name] || 0) || a.name.localeCompare(b.name));
   listEl.replaceChildren();
   if (!items.length) {
@@ -77,18 +77,77 @@ function renderProjects() {
   }
   for (const p of items) {
     const meta = [
-      p.git ? p.branch || 'git' : 'không có git',
+      p.missing ? 'không tìm thấy thư mục' : p.git ? p.branch || 'git' : 'không có git',
       p.sessions ? `${p.sessions} phiên đang chạy` : '',
       recent[p.name] ? `mở ${timeAgo(recent[p.name])}` : '',
     ].filter(Boolean).join(' · ');
-    listEl.append(el('li', {}, el('a', { class: 'project-card', href: `#/p/${encodeURIComponent(p.name)}` },
+    listEl.append(el('li', { class: 'project-item' }, el('a', { class: 'project-card', href: `#/p/${encodeURIComponent(p.name)}` },
       el('span', { class: 'project-name', text: p.name }),
       el('span', { class: 'project-meta' }, p.git ? el('span', { class: 'ico ico-branch' }) : null, meta),
-      p.sessions ? el('span', { class: 'dot', title: 'Có phiên đang chạy' }) : null)));
+      p.linked ? el('span', { class: 'project-path', text: p.path }) : null,
+      p.sessions ? el('span', { class: 'dot', title: 'Có phiên đang chạy' }) : null),
+      p.linked ? el('button', { class: 'icon-btn small', title: 'Bỏ khỏi danh sách (không xóa thư mục)', 'aria-label': 'Bỏ khỏi danh sách', text: '✕', onclick: () => unlinkProject(p) }) : null));
   }
 }
 
 $('#project-filter').addEventListener('input', renderProjects);
+
+async function unlinkProject(p) {
+  if (!(await confirmDialog(`Bỏ "${p.name}" khỏi danh sách dự án?\n${p.path}\nThư mục trên server vẫn giữ nguyên.`, 'Bỏ'))) return;
+  try {
+    await api('DELETE', `/api/projects/${encodeURIComponent(p.name)}/link`);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+  showProjects();
+}
+
+// Duyệt thư mục trên server để mở một thư mục bất kỳ làm dự án (thư mục con có git, thư mục ngoài…).
+const dlgBrowse = $('#dlg-browse');
+const browsePath = $('#browse-path');
+let browsing = null; // kết quả /api/browse đang hiển thị
+
+async function browseTo(target) {
+  $('#browse-error').textContent = '';
+  try {
+    const hidden = $('#browse-hidden').checked ? '1' : '0';
+    browsing = await api('GET', `/api/browse?path=${encodeURIComponent(target)}&hidden=${hidden}`);
+  } catch (err) {
+    $('#browse-error').textContent = err.message;
+    return;
+  }
+  store.set('cpm.browsePath', browsing.path);
+  browsePath.value = browsing.path;
+  $('#browse-up').disabled = !browsing.parent;
+  const join = (name) => (browsing.path.endsWith('/') ? browsing.path : `${browsing.path}/`) + name;
+  $('#browse-list').replaceChildren(...(browsing.dirs.length
+    ? browsing.dirs.map((d) => el('li', {}, el('button', { type: 'button', class: 'browse-item', onclick: () => browseTo(join(d.name)) },
+      d.git ? el('span', { class: 'ico ico-branch', title: 'Có git' }) : el('span', { class: 'browse-ico', text: '📁' }),
+      d.name)))
+    : [el('li', { class: 'muted pad', text: 'Không có thư mục con.' })]));
+}
+
+$('#btn-open-folder').addEventListener('click', () => {
+  dlgBrowse.showModal();
+  browseTo(store.get('cpm.browsePath', ''));
+});
+$('#browse-up').addEventListener('click', () => browsing?.parent && browseTo(browsing.parent));
+$('#browse-home').addEventListener('click', () => browseTo('~'));
+$('#browse-root').addEventListener('click', () => browseTo(''));
+$('#browse-hidden').addEventListener('change', () => browseTo(browsing?.path || ''));
+$('#browse-form').addEventListener('submit', async (e) => {
+  const action = e.submitter?.value;
+  if (action === 'cancel') return;
+  e.preventDefault();
+  if (action !== 'open') return browseTo(browsePath.value); // Enter trong ô đường dẫn hoặc nút Đi
+  try {
+    const { name } = await api('POST', '/api/projects/open', { path: browsing?.path || browsePath.value });
+    dlgBrowse.close();
+    location.hash = `#/p/${encodeURIComponent(name)}`;
+  } catch (err) {
+    $('#browse-error').textContent = err.message;
+  }
+});
 
 // Tạo dự án trống hoặc clone từ git.
 const dlgProject = $('#dlg-project');
