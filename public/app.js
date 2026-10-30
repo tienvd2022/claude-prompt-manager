@@ -267,7 +267,8 @@ async function refreshSessions() {
 
 function sessionLabel(s) {
   const n = s.name.slice(s.name.lastIndexOf('-') + 1);
-  return `${s.kind === 'shell' ? 'Terminal' : 'Claude'} ${n}`;
+  const kind = { shell: 'Terminal', 'claude-bypass': '⚠ Claude' }[s.kind] || 'Claude';
+  return `${kind} ${n}`;
 }
 
 function renderSessions() {
@@ -304,15 +305,48 @@ async function confirmKill(s) {
   refreshSessions();
 }
 
-// Mở phiên mới: chọn Claude hoặc Terminal.
+// Mở phiên mới: chọn Claude (auto mode) hoặc Terminal.
+// Bấm giữ (hoặc chuột phải) nút Claude để hiện thêm lựa chọn bypass permissions.
 const dlgNew = $('#dlg-new');
+const newClaudeBtn = $('#new-claude');
+const bypassBox = $('#new-bypass');
+const COMMANDS = ['claude', 'claude-bypass', 'shell'];
+let holdTimer = null;
+let held = false;
+
 $('#btn-new').addEventListener('click', () => {
   dlgNew.returnValue = '';
+  bypassBox.hidden = true;
   dlgNew.showModal();
+});
+function showBypass() {
+  held = true;
+  bypassBox.hidden = false;
+  navigator.vibrate?.(30);
+}
+newClaudeBtn.addEventListener('pointerdown', () => {
+  held = false;
+  clearTimeout(holdTimer);
+  holdTimer = setTimeout(showBypass, 600);
+});
+for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) {
+  newClaudeBtn.addEventListener(ev, () => clearTimeout(holdTimer));
+}
+newClaudeBtn.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  clearTimeout(holdTimer);
+  showBypass();
+});
+// Thả tay sau khi bấm giữ thì không mở phiên Claude thường.
+newClaudeBtn.addEventListener('click', (e) => {
+  if (held) {
+    e.preventDefault();
+    held = false;
+  }
 });
 dlgNew.addEventListener('close', async () => {
   const command = dlgNew.returnValue;
-  if (command !== 'claude' && command !== 'shell') return;
+  if (!COMMANDS.includes(command)) return;
   try {
     const created = await api('POST', projectUrl(project, '/sessions'), { command });
     await refreshSessions();
