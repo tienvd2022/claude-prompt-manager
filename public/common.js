@@ -119,7 +119,11 @@ export function inputDialog(title, value = '', okLabel = 'OK') {
 export function showText(title, text) {
   const dlg = $('#dlg-view');
   $('h2', dlg).textContent = title;
-  const pre = $('pre', dlg);
+  renderDiff($('pre', dlg), text);
+  dlg.showModal();
+}
+
+export function renderDiff(pre, text) {
   pre.replaceChildren();
   const frag = document.createDocumentFragment();
   for (const line of text.split('\n')) {
@@ -132,7 +136,6 @@ export function showText(title, text) {
   }
   pre.append(frag);
   pre.scrollTop = 0;
-  dlg.showModal();
 }
 
 // git in tiến độ bằng \r: chỉ giữ trạng thái cuối của mỗi dòng.
@@ -140,12 +143,14 @@ export function cleanProgress(text) {
   return text.split('\n').map((line) => line.split('\r').filter(Boolean).pop() || '').join('\n').trim();
 }
 
-// Chạy một lệnh git nền và cập nhật output vào phần tử pre cho tới khi xong.
+// Chạy một lệnh git nền và cập nhật output vào phần tử pre (nếu có) cho tới khi xong.
 export async function followJob(job, pre) {
-  pre.hidden = false;
+  if (pre) pre.hidden = false;
   for (;;) {
-    pre.textContent = `$ git ${job.kind}\n${cleanProgress(job.output)}`;
-    pre.scrollTop = pre.scrollHeight;
+    if (pre) {
+      pre.textContent = `$ git ${job.kind}\n${cleanProgress(job.output)}`;
+      pre.scrollTop = pre.scrollHeight;
+    }
     if (job.status !== 'running') return job;
     await new Promise((r) => setTimeout(r, 800));
     job = (await api('GET', `/api/jobs/${job.id}`)).job;

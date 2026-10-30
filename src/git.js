@@ -21,14 +21,15 @@ const URL_RE = /^(?:(?:ssh|https?|git):\/\/[^\s'"`]+|[A-Za-z0-9._-]+@[A-Za-z0-9.
 const HASH_RE = /^[0-9a-f]{4,40}$/;
 const SSH_KEY = path.join(os.homedir(), '.ssh', 'id_ed25519');
 
-function git(cwd, args, { timeout = 30000, ok = [0] } = {}) {
+function git(cwd, args, { timeout = 30000, ok = [0], raw = false } = {}) {
   return new Promise((resolve, reject) => {
-    execFile('git', [...BASE_ARGS, ...args], { cwd, env: ENV, timeout, maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+    const opts = { cwd, env: ENV, timeout, maxBuffer: 32 * 1024 * 1024, encoding: raw ? 'buffer' : 'utf8' };
+    execFile('git', [...BASE_ARGS, ...args], opts, (err, stdout, stderr) => {
       const code = err ? (typeof err.code === 'number' ? err.code : -1) : 0;
       if (!ok.includes(code)) {
         return reject(httpError(400, String(stderr || err?.message || 'git lỗi').trim()));
       }
-      resolve(String(stdout));
+      resolve(raw ? stdout : String(stdout));
     });
   });
 }
@@ -54,12 +55,13 @@ async function status(project) {
   const dir = projectDir(project);
   if (!fs.existsSync(path.join(dir, '.git'))) return { repo: false };
   const out = await git(dir, ['status', '--porcelain=v2', '--branch', '-z']);
-  const info = { repo: true, branch: null, upstream: null, ahead: 0, behind: 0, changes: [], remote: null };
+  const info = { repo: true, branch: null, head: null, upstream: null, ahead: 0, behind: 0, changes: [], remote: null };
   const parts = out.split('\0');
   for (let i = 0; i < parts.length; i++) {
     const line = parts[i];
     if (!line) continue;
-    if (line.startsWith('# branch.head ')) info.branch = line.slice(14);
+    if (line.startsWith('# branch.oid ')) info.head = line.slice(13) === '(initial)' ? null : line.slice(13);
+    else if (line.startsWith('# branch.head ')) info.branch = line.slice(14);
     else if (line.startsWith('# branch.upstream ')) info.upstream = line.slice(18);
     else if (line.startsWith('# branch.ab ')) {
       const m = line.match(/\+(\d+) -(\d+)/);
@@ -98,18 +100,123 @@ async function log(project, limit = 100) {
 }
 
 async function show(project, hash) {
-  if (typeof hash !== 'string' || !HASH_RE.test(hash)) throw httpError(400, 'Mã commit không hợp lệ');
+  checkHash(hash);
   return truncate(await git(repoDir(project), ['show', '--stat', '--patch', '--format=fuller', hash, '--']));
+}
+
+function checkFile(file) {
+  if (typeof file !== 'string' || !file || file.includes('\0')) throw httpError(400, 'Thiếu đường dẫn file');
+  if (path.isAbsolute(file) || path.normalize(file).startsWith('..')) throw httpError(400, 'Đường dẫn ra ngoài dự án');
+  return file;
+}
+
+function checkHash(hash) {
+  if (typeof hash !== 'string' || !HASH_RE.test(hash)) throw httpError(400, 'Mã commit không hợp lệ');
+  return hash;
 }
 
 async function diff(project, file, untracked) {
   const dir = repoDir(project);
-  if (typeof file !== 'string' || !file || file.includes('\0')) throw httpError(400, 'Thiếu đường dẫn file');
-  if (path.isAbsolute(file) || path.normalize(file).startsWith('..')) throw httpError(400, 'Đường dẫn ra ngoài dự án');
+  checkFile(file);
   if (untracked && file.endsWith('/')) return 'Thư mục mới, chưa được git theo dõi.';
   if (untracked) return truncate(await git(dir, ['diff', '--no-index', '--', '/dev/null', file], { ok: [0, 1] }));
   const hasHead = await git(dir, ['rev-parse', '--verify', '-q', 'HEAD']).then(() => true, () => false);
   return truncate(await git(dir, hasHead ? ['diff', 'HEAD', '--', file] : ['diff', '--cached', '--', file]));
+}
+
+// Commit gốc thì so với cây rỗng; commit merge thì so với cha đầu tiên.
+async function commitBase(dir, hash) {
+  const [, parent] = (await git(dir, ['rev-list', '--parents', '-n1', hash, '--'])).trim().split(' ');
+  return parent || (await git(dir, ['hash-object', '-t', 'tree', '/dev/null'])).trim();
+}
+
+async function commitFiles(project, hash) {
+  const dir = repoDir(project);
+  checkHash(hash);
+  const base = await commitBase(dir, hash);
+  const parts = (await git(dir, ['diff', '--name-status', '-z', '-M', base, hash, '--'])).split('\0');
+  const files = [];
+  for (let i = 0; i + 1 < parts.length; i++) {
+    const code = parts[i][0];
+    if (!code) continue;
+    if (code === 'R' || code === 'C') files.push({ status: code, from: parts[++i], path: parts[++i] });
+    else files.push({ status: code, path: parts[++i] });
+  }
+  return { base, files };
+}
+
+async function commitDiff(project, hash, file, from) {
+  const dir = repoDir(project);
+  checkHash(hash);
+  checkFile(file);
+  const paths = from ? [checkFile(from), file] : [file];
+  const base = await commitBase(dir, hash);
+  return truncate(await git(dir, ['diff', '-M', base, hash, '--', ...paths]));
+}
+
+// Nội dung một file tại commit (rev) hoặc trong thư mục làm việc (rev rỗng, đọc ở files.js).
+async function fileAt(project, rev, file) {
+  const dir = repoDir(project);
+  checkHash(rev);
+  checkFile(file);
+  return textOrBinary(await git(dir, ['show', `${rev}:${file}`]));
+}
+
+// Bản thô (ảnh) của file tại commit.
+async function rawAt(project, rev, file) {
+  const dir = repoDir(project);
+  checkHash(rev);
+  checkFile(file);
+  return git(dir, ['show', `${rev}:${file}`], { raw: true });
+}
+
+function textOrBinary(text) {
+  if (text.slice(0, 8000).includes('\0')) return '(file nhị phân, không hiển thị được)';
+  return truncate(text);
+}
+
+// ---------- Nhánh ----------
+
+async function branches(project) {
+  const dir = repoDir(project);
+  const out = await git(dir, ['for-each-ref', '--sort=-committerdate', '--format=%(refname)%00%(upstream:short)%00%(HEAD)', 'refs/heads', 'refs/remotes']);
+  const local = [];
+  const remote = [];
+  let current = null;
+  for (const line of out.split('\n')) {
+    if (!line) continue;
+    const [ref, upstream, head] = line.split('\0');
+    if (ref.startsWith('refs/heads/')) {
+      const name = ref.slice(11);
+      local.push({ name, upstream: upstream || null });
+      if (head === '*') current = name;
+    } else if (!ref.endsWith('/HEAD')) remote.push(ref.slice(13));
+  }
+  const tracked = new Set(local.map((b) => b.upstream));
+  return { current, local, remote: remote.filter((r) => !tracked.has(r)) };
+}
+
+async function checkBranchName(dir, name) {
+  if (typeof name !== 'string' || !name.trim() || name.startsWith('-') || name.length > 200) throw httpError(400, 'Tên nhánh không hợp lệ');
+  await git(dir, ['check-ref-format', '--branch', name]).catch(() => {
+    throw httpError(400, 'Tên nhánh không hợp lệ');
+  });
+  return name;
+}
+
+// Chuyển sang nhánh có sẵn, nhánh remote (tạo nhánh local theo dõi nó) hoặc tạo nhánh mới từ HEAD.
+async function checkout(project, { branch, create }) {
+  const dir = repoDir(project);
+  const name = await checkBranchName(dir, typeof branch === 'string' ? branch.trim() : branch);
+  if (create) return git(dir, ['switch', '-c', name]);
+  const exists = (ref) => git(dir, ['show-ref', '--verify', '-q', ref]).then(() => true, () => false);
+  if (await exists(`refs/heads/${name}`)) return git(dir, ['switch', name]);
+  if (await exists(`refs/remotes/${name}`)) {
+    const localName = name.slice(name.indexOf('/') + 1);
+    if (await exists(`refs/heads/${localName}`)) return git(dir, ['switch', localName]);
+    return git(dir, ['switch', '--track', name]);
+  }
+  throw httpError(404, 'Không tìm thấy nhánh');
 }
 
 async function commitAll(project, message) {
@@ -231,4 +338,4 @@ function createSshKey() {
   });
 }
 
-module.exports = { status, log, show, diff, commitAll, init, clone, remoteOp, getJob, getConfig, setConfig, createSshKey };
+module.exports = { status, log, show, diff, commitFiles, commitDiff, fileAt, rawAt, branches, checkout, commitAll, init, clone, remoteOp, getJob, getConfig, setConfig, createSshKey };

@@ -1,6 +1,9 @@
-// Panel quản lý file của dự án: duyệt thư mục, upload, tải về, đổi tên, xóa.
+// Panel quản lý file của dự án: duyệt thư mục, xem/sửa file, upload, tải về, đổi tên, xóa.
 
 import { $, el, api, projectUrl, formatSize, timeAgo, toast, confirmDialog, inputDialog, nativeApp } from './common.js';
+import { openViewer } from './viewer.js';
+
+const LONG_PRESS_MS = 500;
 
 const panel = $('#panel-files');
 const listEl = $('#files-list');
@@ -85,14 +88,55 @@ function renderEntry(entry) {
   const meta = isDir ? (entry.link ? 'liên kết' : '') : `${formatSize(entry.size)} · ${timeAgo(entry.mtime)}`;
   const open = el('button', {
     class: 'entry-open',
-    title: isDir ? 'Mở thư mục' : 'Tác vụ với file',
-    onclick: () => (isDir ? load(rel) : entryActions(entry, rel)),
+    title: isDir ? 'Mở thư mục (ấn giữ để xem tác vụ)' : 'Xem file (ấn giữ để xem tác vụ)',
   },
   el('span', { class: 'entry-icon', text: isDir ? '📁' : '📄' }),
   el('span', { class: 'entry-name', text: entry.name }),
   meta ? el('span', { class: 'entry-meta', text: meta }) : null);
+  onTapOrHold(open, () => (isDir ? load(rel) : openViewer({ project, path: rel, onSaved: () => load(cwd) })), () => entryActions(entry, rel));
   const more = el('button', { class: 'icon-btn small', title: 'Tác vụ', 'aria-label': `Tác vụ với ${entry.name}`, text: '⋯', onclick: () => entryActions(entry, rel) });
   return el('li', { class: 'entry' }, open, more);
+}
+
+// Bấm thì onTap, ấn giữ (hoặc chuột phải) thì onHold; ấn giữ xong không tính thêm lần bấm.
+function onTapOrHold(node, onTap, onHold) {
+  let timer = null;
+  let held = false;
+  let start = null;
+  const cancel = () => {
+    clearTimeout(timer);
+    timer = null;
+  };
+  node.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;
+    held = false;
+    start = [e.clientX, e.clientY];
+    cancel();
+    timer = setTimeout(() => {
+      timer = null;
+      held = true;
+      onHold();
+    }, LONG_PRESS_MS);
+  });
+  node.addEventListener('pointermove', (e) => {
+    if (timer && start && Math.hypot(e.clientX - start[0], e.clientY - start[1]) > 10) cancel();
+  });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave']) node.addEventListener(ev, cancel);
+  node.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    cancel();
+    if (!held) {
+      held = true;
+      onHold();
+    }
+  });
+  node.addEventListener('click', () => {
+    if (held) {
+      held = false;
+      return;
+    }
+    onTap();
+  });
 }
 
 function entryActions(entry, rel) {
