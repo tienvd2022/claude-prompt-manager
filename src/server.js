@@ -15,6 +15,7 @@ try {
 
 const { WebSocketServer } = require('ws');
 const auth = require('./auth');
+const browser = require('./browser');
 const files = require('./files');
 const git = require('./git');
 const projects = require('./projects');
@@ -235,6 +236,7 @@ route('DELETE', '/api/sessions/:name', async (req, res, name) => {
     throw projects.httpError(400, err.stderr?.trim() || err.message);
   });
   queue.drop(name);
+  browser.drop(name);
   sendJson(res, 200, { ok: true });
 });
 route('GET', '/api/projects/:p/sessions', async (req, res, p) => {
@@ -260,6 +262,11 @@ route('GET', '/api/sessions/:name/text', async (req, res, name) => {
   await sessionOr404(name);
   sendJson(res, 200, { text: await tmux.history(name, 10000, { plain: true }) });
 });
+route('DELETE', '/api/sessions/:name/browser', async (req, res, name) => {
+  await sessionOr404(name);
+  browser.stop(name);
+  sendJson(res, 200, { ok: true });
+});
 route('GET', '/api/sessions/:name/queue', async (req, res, name) => {
   await sessionOr404(name);
   sendJson(res, 200, { items: queue.get(name) });
@@ -281,7 +288,7 @@ route('POST', '/api/projects/:p/sessions', async (req, res, p) => {
   const body = await readJson(req);
   const cwd = projects.projectDir(p);
   try {
-    sendJson(res, 201, await tmux.create({ project: p, cwd, command: body.command || 'claude', alias: body.alias, bypass: body.bypass === true }));
+    sendJson(res, 201, await tmux.create({ project: p, cwd, command: body.command || 'claude', alias: body.alias, bypass: body.bypass === true, prepare: browser.prepare }));
   } catch (err) {
     throw projects.httpError(400, err.stderr?.trim() || err.message);
   }
@@ -439,12 +446,13 @@ server.on('upgrade', async (req, socket, head) => {
   };
   try {
     const url = new URL(req.url, 'http://localhost');
-    if (url.pathname !== '/ws') return reject(404, 'Not Found');
+    if (url.pathname !== '/ws' && url.pathname !== '/ws/browser') return reject(404, 'Not Found');
     if (!originOk(req)) return reject(403, 'Forbidden');
     const sid = currentSession(req);
     if (!sid) return reject(401, 'Unauthorized');
     const name = url.searchParams.get('session');
     if (!(await tmux.exists(name))) return reject(404, 'Not Found');
+    if (url.pathname === '/ws/browser') return wss.handleUpgrade(req, socket, head, (ws) => onBrowser(ws, sid, name));
     const cols = clamp(Number(url.searchParams.get('cols')) || 80, 20, 500);
     const rows = clamp(Number(url.searchParams.get('rows')) || 24, 5, 200);
     wss.handleUpgrade(req, socket, head, (ws) => onTerminal(ws, sid, name, cols, rows));
@@ -506,13 +514,28 @@ async function onTerminal(ws, sid, name, cols, rows) {
   });
 }
 
+// Xem trình duyệt của phiên; ping giữ kết nối và cắt khi đăng xuất như terminal.
+function onBrowser(ws, sid, name) {
+  let pong = true;
+  ws.on('pong', () => { pong = true; });
+  const timer = setInterval(() => {
+    if (!sessions.valid(sid) || !pong) return ws.terminate();
+    pong = false;
+    ws.ping();
+  }, 25000);
+  ws.on('close', () => clearInterval(timer));
+  browser.view(ws, name);
+}
+
 projects.ensureRoot();
 queue.start();
+browser.start();
 server.listen(PORT, HOST, () => {
   console.log(`claude-prompt-manager chạy tại http://${HOST}:${PORT} (tmux socket: ${tmux.SOCKET}, dự án: ${projects.PROJECTS_DIR})`);
 });
 
 function shutdown() {
+  browser.shutdown();
   for (const ws of wss.clients) ws.close(1001, 'server-restart');
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();

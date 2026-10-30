@@ -359,6 +359,31 @@
     <textarea id="fv-editor" class="fv-editor" hidden spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
   </dialog>
 
+  <dialog id="dlg-browser" class="dlg-wide dlg-browser">
+    <div class="view-head">
+      <h2 class="ellipsis">Trình duyệt</h2>
+      <button type="button" id="bv-stop" title="Tắt trình duyệt của phiên (tự bật lại khi Claude hoặc anh cần)">⏻ Tắt</button>
+      <button type="button" id="bv-close" class="icon-btn" aria-label="Đóng">✕</button>
+    </div>
+    <div class="bv-bar">
+      <button type="button" id="bv-back" class="icon-btn" title="Lùi" aria-label="Lùi">←</button>
+      <button type="button" id="bv-fwd" class="icon-btn" title="Tiến" aria-label="Tiến">→</button>
+      <button type="button" id="bv-reload" class="icon-btn" title="Tải lại" aria-label="Tải lại">⟳</button>
+      <form id="bv-url-form" class="grow"><input id="bv-url" type="text" inputmode="url" placeholder="Địa chỉ trang" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></form>
+      <select id="bv-pages" title="Chọn tab"></select>
+      <button type="button" id="bv-new" class="icon-btn" title="Mở tab mới" aria-label="Mở tab mới">＋</button>
+    </div>
+    <div id="bv-screen" class="bv-screen" tabindex="0">
+      <img id="bv-img" alt="" draggable="false" hidden>
+      <p id="bv-msg" class="muted small"></p>
+    </div>
+    <form id="bv-type" class="bv-type">
+      <input id="bv-text" type="text" placeholder="Gõ chữ vào ô đang chọn trên trang…" autocomplete="off">
+      <button type="submit">Gõ</button>
+      <button type="button" id="bv-enter" title="Enter" aria-label="Enter">⏎</button>
+    </form>
+  </dialog>
+
   <dialog id="dlg-view" class="dlg-wide">
     <form method="dialog">
       <div class="view-head">

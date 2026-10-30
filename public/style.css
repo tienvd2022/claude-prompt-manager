@@ -406,6 +406,24 @@ dialog label.inline input { width: auto; }
 .fv-image img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .fv-editor { flex: 1; min-height: 0; resize: none; font: 12px/1.45 Menlo, Monaco, Consolas, monospace; white-space: pre; tab-size: 4; background: var(--term-bg); }
 .fv-editor[hidden] { display: none; }
+.dlg-browser { display: none; flex-direction: column; gap: 8px; height: min(1000px, calc(var(--app-height) - 16px)); max-height: none; }
+.dlg-browser[open] { display: flex; }
+.bv-bar, .bv-type { display: flex; align-items: center; gap: 6px; }
+.bv-bar button, .view-head #bv-stop { padding: 5px 10px; font-size: 13px; }
+.bv-bar { flex-wrap: wrap; }
+.bv-bar form { display: flex; min-width: 0; flex: 1 1 220px; }
+.bv-bar input { flex: 1; min-width: 0; }
+.bv-bar select { max-width: 30%; }
+.bv-type input { flex: 1; min-width: 0; }
+@media (max-width: 600px) {
+  .bv-bar form { order: 1; flex-basis: 100%; }
+  .bv-bar select { flex: 1; max-width: none; min-width: 0; }
+}
+.bv-screen { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: hidden; background: var(--term-bg); border: 1px solid var(--border); border-radius: 6px; outline: none; }
+.bv-screen:focus-visible { border-color: var(--accent); }
+.bv-screen img { max-width: 100%; max-height: 100%; touch-action: none; cursor: default; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.bv-screen p { margin: 0; padding: 16px; text-align: center; }
+.bv-screen p:empty { display: none; }
 .entry-open, .entry { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .diff .add { color: #8fd17a; }
 .diff .del { color: #f08070; }
