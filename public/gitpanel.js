@@ -79,7 +79,7 @@ function renderInfo(st) {
     ? [st.ahead ? `↑${st.ahead} chưa push` : '', st.behind ? `↓${st.behind} chưa pull` : ''].filter(Boolean).join(' · ') || 'đã đồng bộ'
     : 'chưa có nhánh trên remote';
   infoEl.replaceChildren(
-    el('div', {}, el('span', { class: 'branch', text: `⎇ ${st.branch || '?'}` }), ' ', el('span', { class: 'muted', text: sync })),
+    el('div', {}, el('span', { class: 'branch' }, el('span', { class: 'ico ico-branch' }), st.branch || '?'), ' ', el('span', { class: 'muted', text: sync })),
     el('div', { class: 'muted small ellipsis', title: st.remote || '', text: st.remote ? `origin: ${st.remote}` : 'Chưa có remote origin' }),
   );
 }
