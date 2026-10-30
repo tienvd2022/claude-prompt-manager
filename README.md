@@ -22,6 +22,7 @@ Luồng dùng: đăng nhập → chọn dự án → mở nhiều tab (mỗi tab
   ```
   Bấm nút Claude thường thì mở alias `default` (không ghi thì lấy alias đầu tiên); nhấn giữ nút Claude để chọn alias khác và bật/tắt bypass permissions. Phiên chạy alias khác `claude` có thêm `(alias)` sau tên. Sửa file không cần restart.
 - Chạy dưới user thường, không cần root. Lệnh Claude chạy có đúng quyền của user đó.
+- **App mobile** (Android/iOS, React Native) ở [mobile/](mobile/README.md): nhập địa chỉ server rồi dùng y như bản web. Feature mới làm cho web thì app có luôn sau khi deploy server.
 
 ## Bảo mật
 

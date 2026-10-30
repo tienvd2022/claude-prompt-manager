@@ -1,6 +1,6 @@
 // Panel quản lý file của dự án: duyệt thư mục, upload, tải về, đổi tên, xóa.
 
-import { $, el, api, projectUrl, formatSize, timeAgo, toast, confirmDialog, inputDialog } from './common.js';
+import { $, el, api, projectUrl, formatSize, timeAgo, toast, confirmDialog, inputDialog, nativeApp } from './common.js';
 
 const panel = $('#panel-files');
 const listEl = $('#files-list');
@@ -105,14 +105,25 @@ function entryActions(entry, rel) {
   dlg.showModal();
   dlg.addEventListener('close', async () => {
     const action = dlg.returnValue;
-    if (action === 'download') download(rel);
+    if (action === 'download') download(rel, isDir);
     else if (action === 'insert') onInsert(isDir ? `${rel}/` : rel);
     else if (action === 'rename') renameEntry(entry, rel);
     else if (action === 'delete') deleteEntry(entry, rel);
   }, { once: true });
 }
 
-function download(rel) {
+async function download(rel, isDir) {
+  if (nativeApp) {
+    // WebView không tự tải file: xin link tải dùng một lần rồi để app native tải, lưu/chia sẻ.
+    try {
+      const { url } = await api('POST', projectUrl(project, '/download-ticket'), { path: rel });
+      const name = rel.split('/').pop() || project;
+      nativeApp.post({ type: 'download', url: new URL(url, location.href).href, name: isDir ? `${name}.tar.gz` : name });
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    return;
+  }
   // Trình duyệt tự gửi cookie đăng nhập; link tạm để tải không làm mất trang.
   const a = el('a', { href: projectUrl(project, `/download?path=${encodeURIComponent(rel)}`), download: '' });
   document.body.append(a);

@@ -14,6 +14,11 @@ export function el(tag, props = {}, ...children) {
   return node;
 }
 
+// Đang chạy trong app mobile (mobile/, WebView) thì gửi được tin nhắn sang phần native.
+export const nativeApp = window.ReactNativeWebView && window.CPM_APP
+  ? { ...window.CPM_APP, post: (msg) => window.ReactNativeWebView.postMessage(JSON.stringify(msg)) }
+  : null;
+
 export const store = {
   get(key, fallback) {
     try {
