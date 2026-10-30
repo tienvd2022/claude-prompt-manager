@@ -139,8 +139,13 @@
       <h2>Mở phiên mới</h2>
       <p class="muted small">Phiên chạy trong thư mục dự án và vẫn chạy khi anh đóng web.</p>
       <div class="choice">
-        <button value="claude" class="primary-btn">✳ Claude</button>
+        <button value="claude" id="new-claude" class="primary-btn">✳ Claude</button>
         <button value="shell">&gt;_ Terminal</button>
+      </div>
+      <!-- Bấm giữ nút Claude mới hiện -->
+      <div id="new-bypass" class="bypass" hidden>
+        <p class="small">Claude tự chạy mọi lệnh, sửa/xóa file mà <b>không hỏi</b>. Chỉ dùng khi anh tin chắc việc cần làm.</p>
+        <button value="claude-bypass" class="danger-btn">⚠ Claude: bypass permissions</button>
       </div>
       <div class="dlg-actions"><button value="cancel">Hủy</button></div>
     </form>

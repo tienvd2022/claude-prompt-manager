@@ -11,7 +11,9 @@ const SOCKET = process.env.CPM_TMUX_SOCKET || 'cpm';
 const CONF = path.join(__dirname, '..', 'tmux.conf');
 const NAME_RE = /^[A-Za-z0-9_-]{1,48}$/;
 const COMMANDS = {
-  claude: 'claude',
+  claude: 'claude --permission-mode auto',
+  // Chỉ mở khi bấm giữ nút Claude: bỏ qua mọi bước hỏi quyền.
+  'claude-bypass': 'claude --dangerously-skip-permissions',
   shell: null,
 };
 
@@ -88,7 +90,7 @@ async function nextName(project) {
 }
 
 async function create({ project, cwd, command }) {
-  if (!(command in COMMANDS)) throw new Error('Lệnh không hợp lệ');
+  if (!Object.hasOwn(COMMANDS, command)) throw new Error('Lệnh không hợp lệ');
   const name = await nextName(project);
   // Gắn tên dự án và loại phiên vào chính session tmux, để restart web vẫn biết phiên thuộc dự án nào.
   await tmux(['new-session', '-d', '-s', name, '-c', cwd, '-x', '160', '-y', '45', ';', 'set-option', '@cpm_project', project, ';', 'set-option', '@cpm_kind', command]);

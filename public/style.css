@@ -325,6 +325,11 @@ dialog label.inline input { width: auto; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .choice { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .choice button { padding: 14px; font-size: 15px; }
+/* Bấm giữ nút Claude: chặn menu/chọn chữ của trình duyệt điện thoại */
+#new-claude { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+.bypass { margin-top: 12px; padding: 10px; border: 1px solid var(--danger); border-radius: 8px; }
+.bypass p { margin: 0 0 8px; color: var(--danger); }
+.bypass button { width: 100%; padding: 12px; }
 .entry-actions { display: grid; gap: 6px; }
 .entry-actions button { padding: 10px; }
 .ssh { display: grid; gap: 6px; border-top: 1px solid var(--border); padding-top: 12px; }
