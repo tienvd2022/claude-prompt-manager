@@ -10,6 +10,7 @@ Luồng dùng: đăng nhập → chọn dự án → mở nhiều tab (mỗi tab
 - **Git**: xem thay đổi + diff, commit tất cả, lịch sử commit, fetch / pull (`--ff-only`) / push. Clone/push qua SSH dùng key của server.
 - Thanh phím (Esc, Tab, ↑↓, ^C, Ctrl giữ, lịch sử prompt…; nút ⋯ để ẩn/sắp xếp) và ô gõ prompt cho điện thoại: nhập bằng giọng nói, đính kèm/dán ảnh.
 - **Hàng đợi prompt**: bấm ⏳ để xếp prompt, server tự gửi prompt tiếp theo khi Claude xong lượt (kể cả khi đã tắt web). Trạng thái lấy từ hook của Claude Code (`src/claude-hooks.json`, nạp qua `--settings`), nên chỉ có ở phiên Claude mở từ bản này trở đi. Bấm Esc ngắt Claude thì hàng đợi không tự chạy tiếp: mở 📋 và bấm "Gửi tiếp ngay".
+- Claude được mở với `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1` để nội dung trôi vào lịch sử: vuốt lên xem lại được. Nút 📄 mở nội dung phiên dạng chữ để chọn/copy trên điện thoại.
 - Chạy dưới user thường, không cần root. Lệnh Claude chạy có đúng quyền của user đó.
 
 ## Bảo mật
