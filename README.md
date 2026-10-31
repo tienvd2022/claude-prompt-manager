@@ -68,6 +68,8 @@ Nếu domain đi qua Cloudflare (proxy cam), IP thấy được là IP Cloudflar
 
 - **Public key** → Copy, đem add vào GitHub → Settings → SSH keys của đúng tài khoản. **Kiểm tra** chạy `ssh -T` để xem key đang vào được tài khoản nào.
 - **＋ Thêm** alias: tạo key ed25519 mới `~/.ssh/id_ed25519_<alias>` và thêm khối `Host` vào `~/.ssh/config` (bản cũ chép ra `config.cpm-backup`; không sửa/xóa key có sẵn). Clone/push bằng `git@<alias>:user/repo.git` là ra đúng tài khoản.
+- **Tên gợi nhớ** (vd Cá nhân, Công ty): đặt khi thêm hoặc bấm **Sửa**; hiện trước alias trong danh sách và ô chọn tài khoản. Chỉ lưu trong app (`data/git-labels.json`), không ghi vào `~/.ssh/config`.
+- **Sửa** alias: đổi tên alias và HostName trong khối `Host`; đổi tên thì remote origin của các dự án đang dùng alias cũ được đổi theo. **Xóa**: bỏ alias khỏi `~/.ssh/config`, file key giữ lại (thêm lại alias cùng tên sẽ dùng lại key đó). Mỗi lần sửa/xóa đều chép bản cũ ra `config.cpm-backup`. `github.com` mặc định (không có khối Host) chỉ đặt được tên.
 - **Tạo repo mới** cần token GitHub (SSH không tạo repo được): app lấy từ `gh auth token -u <tài khoản>` nếu server đã `gh auth login` tài khoản đó, không thì bấm **Token** để nhập Personal Access Token (quyền `repo`), lưu ở `data/git-tokens.json` (chmod 600).
 - Điền tên/email hiện trong commit rồi Lưu.
 

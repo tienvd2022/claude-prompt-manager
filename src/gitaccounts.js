@@ -8,11 +8,14 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
-const { httpError } = require('./projects');
+const projects = require('./projects');
+
+const { httpError } = projects;
 
 const SSH_DIR = path.join(os.homedir(), '.ssh');
 const SSH_CONFIG = path.join(SSH_DIR, 'config');
 const TOKENS_FILE = path.join(__dirname, '..', 'data', 'git-tokens.json');
+const LABELS_FILE = path.join(__dirname, '..', 'data', 'git-labels.json'); // alias -> tên gợi nhớ anh đặt
 const ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$/;
 const GIT_HOST_RE = /github|gitlab|bitbucket|gitea|codeberg/i;
@@ -78,7 +81,38 @@ function account(alias, opts, implicit = false) {
     keyExists: !!identityFile && fs.existsSync(identityFile),
     publicKey: readPub(identityFile),
     implicit,
+    label: loadLabels()[alias] || '',
   };
+}
+
+// ---------- Tên gợi nhớ (chỉ lưu trong app, không ghi vào ~/.ssh/config) ----------
+
+function loadLabels() {
+  try {
+    return JSON.parse(fs.readFileSync(LABELS_FILE, 'utf8')) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveLabels(labels) {
+  fs.mkdirSync(path.dirname(LABELS_FILE), { recursive: true, mode: 0o700 });
+  const tmp = `${LABELS_FILE}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(labels, null, 2));
+  fs.renameSync(tmp, LABELS_FILE);
+}
+
+function setLabel(alias, label) {
+  const labels = loadLabels();
+  if (label) labels[alias] = label;
+  else delete labels[alias];
+  saveLabels(labels);
+}
+
+function cleanLabel(label) {
+  label = String(label ?? '').trim();
+  if (label.length > 60 || /[\x00-\x1f]/.test(label)) throw httpError(400, 'Tên gợi nhớ tối đa 60 ký tự');
+  return label;
 }
 
 // Chỉ lấy các host git (GitHub, GitLab…) hoặc host đăng nhập bằng user git; host server thường (vps…) bỏ qua.
@@ -132,20 +166,126 @@ function keygen(file, comment) {
   });
 }
 
-async function add({ alias, hostname } = {}) {
+async function add({ alias, hostname, label } = {}) {
   alias = String(alias || '').trim();
   hostname = String(hostname || 'github.com').trim();
+  label = cleanLabel(label);
   if (!ALIAS_RE.test(alias)) throw httpError(400, 'Alias chỉ gồm chữ, số, dấu . _ -');
   if (!HOST_RE.test(hostname)) throw httpError(400, 'Host không hợp lệ');
   if (parseConfig().some((b) => b.names.includes(alias))) throw httpError(409, `Đã có Host ${alias} trong ~/.ssh/config`);
   const file = path.join(SSH_DIR, `id_ed25519_${alias}`);
-  await keygen(file, `${alias}@${os.hostname()}`);
-  // Giữ bản sao config cũ trước khi sửa.
-  if (fs.existsSync(SSH_CONFIG)) fs.copyFileSync(SSH_CONFIG, `${SSH_CONFIG}.cpm-backup`);
-  const old = fs.existsSync(SSH_CONFIG) ? fs.readFileSync(SSH_CONFIG, 'utf8') : '';
+  // Alias từng xóa rồi thêm lại: key cũ vẫn còn thì dùng lại (đã add vào GitHub rồi), không tạo mới.
+  if (!(fs.existsSync(file) && fs.existsSync(`${file}.pub`))) await keygen(file, `${alias}@${os.hostname()}`);
+  const old = readConfig();
   const block = `Host ${alias}\n  HostName ${hostname}\n  User git\n  IdentityFile ~/.ssh/${path.basename(file)}\n  IdentitiesOnly yes\n`;
-  fs.appendFileSync(SSH_CONFIG, `${old && !old.endsWith('\n') ? '\n' : ''}${old ? '\n' : ''}${block}`, { mode: 0o600 });
+  writeConfig(`${old}${old && !old.endsWith('\n') ? '\n' : ''}${old ? '\n' : ''}${block}`);
+  setLabel(alias, label);
   return get(alias);
+}
+
+// ---------- Sửa / xóa alias trong ~/.ssh/config ----------
+
+function readConfig() {
+  try {
+    return fs.readFileSync(SSH_CONFIG, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+// Giữ bản sao config cũ trước mỗi lần sửa.
+function writeConfig(text) {
+  fs.mkdirSync(SSH_DIR, { recursive: true, mode: 0o700 });
+  if (fs.existsSync(SSH_CONFIG)) fs.copyFileSync(SSH_CONFIG, `${SSH_CONFIG}.cpm-backup`);
+  const tmp = `${SSH_CONFIG}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, text, { mode: 0o600 });
+  fs.renameSync(tmp, SSH_CONFIG);
+}
+
+const directive = (line) => line.trim().match(/^(\S+?)\s*(?:=\s*|\s+)(.*)$/);
+
+// Vị trí khối Host có alias: [dòng Host, dòng sau khối). Dòng trống/chú thích ở cuối khối tính cho khối sau
+// (thường là chú thích của Host kế tiếp).
+function findBlock(lines, alias) {
+  const start = lines.findIndex((l) => {
+    const m = directive(l);
+    return m && m[1].toLowerCase() === 'host' && m[2].split(/\s+/).includes(alias);
+  });
+  if (start < 0) return null;
+  let end = start + 1;
+  while (end < lines.length && !/^\s*(host|match)\b/i.test(lines[end])) end++;
+  while (end > start + 1 && (!lines[end - 1].trim() || lines[end - 1].trim().startsWith('#'))) end--;
+  return { start, end, names: directive(lines[start])[2].split(/\s+/) };
+}
+
+function editableBlock(alias) {
+  const lines = readConfig().split('\n');
+  const b = findBlock(lines, alias);
+  if (!b) throw httpError(404, get(alias).implicit
+    ? 'github.com chưa có khối Host trong ~/.ssh/config (dùng key mặc định), chỉ đặt được tên gợi nhớ'
+    : `Không thấy Host ${alias} trong ~/.ssh/config (có thể nằm ở file Include), sửa tay giúp em`);
+  return { lines, b };
+}
+
+// Sửa tên gợi nhớ, đổi tên alias, đổi HostName. Đổi alias thì remote origin của các dự án đang dùng alias cũ
+// cũng được đổi theo, không thì push/pull hỏng.
+async function update(alias, { alias: next, hostname, label } = {}) {
+  const cur = get(alias);
+  next = next === undefined ? alias : String(next).trim();
+  hostname = hostname === undefined ? cur.hostname : String(hostname).trim();
+  if (!ALIAS_RE.test(next)) throw httpError(400, 'Alias chỉ gồm chữ, số, dấu . _ -');
+  if (!HOST_RE.test(hostname)) throw httpError(400, 'Host không hợp lệ');
+  let remotes = [];
+  if (next !== alias || hostname !== cur.hostname) {
+    const { lines, b } = editableBlock(alias);
+    if (next !== alias && parseConfig().some((x) => x.names.includes(next))) throw httpError(409, `Đã có Host ${next} trong ~/.ssh/config`);
+    const indent = (lines[b.start + 1]?.match(/^\s+/) || ['  '])[0];
+    let hostLine = b.start + 1;
+    for (; hostLine < b.end; hostLine++) if (directive(lines[hostLine])?.[1].toLowerCase() === 'hostname') break;
+    if (hostLine < b.end) lines[hostLine] = `${lines[hostLine].match(/^\s*/)[0]}HostName ${hostname}`;
+    else if (hostname !== next) lines.splice(b.start + 1, 0, `${indent}HostName ${hostname}`);
+    lines[b.start] = `${lines[b.start].match(/^\s*/)[0]}Host ${b.names.map((n) => (n === alias ? next : n)).join(' ')}`;
+    writeConfig(lines.join('\n'));
+    if (next !== alias) remotes = await renameRemotes(alias, next);
+  }
+  const labels = loadLabels();
+  if (next !== alias) {
+    delete labels[alias];
+    saveLabels(labels);
+  }
+  setLabel(next, label === undefined ? cur.label : cleanLabel(label));
+  return { ...get(next), remotes };
+}
+
+// Đổi remote origin git@<cũ>:a/b.git -> git@<mới>:a/b.git ở mọi dự án, trả về tên các dự án đã đổi.
+async function renameRemotes(from, to) {
+  const done = [];
+  const re = new RegExp(`^((?:ssh://)?(?:[^@/\\s]+@)?)${from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([:/])`);
+  for (const p of await projects.list().catch(() => [])) {
+    if (!p.git || p.missing) continue;
+    const dir = p.path || path.join(projects.PROJECTS_DIR, p.name);
+    const r = await run('git', ['-C', dir, 'remote', 'get-url', 'origin'], 10000);
+    const url = r.out.trim();
+    if (r.code || !re.test(url)) continue;
+    const s = await run('git', ['-C', dir, 'remote', 'set-url', 'origin', url.replace(re, `$1${to}$2`)], 10000);
+    if (!s.code) done.push(p.name);
+  }
+  return done;
+}
+
+// Xóa alias khỏi ~/.ssh/config. File key giữ lại (xóa key là mất hẳn); thêm lại alias cùng tên thì dùng lại key đó.
+function remove(alias) {
+  const { lines, b } = editableBlock(alias);
+  if (b.names.length > 1) {
+    lines[b.start] = `${lines[b.start].match(/^\s*/)[0]}Host ${b.names.filter((n) => n !== alias).join(' ')}`;
+  } else {
+    let start = b.start;
+    while (start > 0 && !lines[start - 1].trim()) start--; // bỏ luôn dòng trống phía trên khối
+    lines.splice(start, b.end - start);
+  }
+  writeConfig(lines.join('\n'));
+  setLabel(alias, '');
+  return { alias };
 }
 
 // Tài khoản có trong config nhưng file key chưa có (hoặc github.com mặc định chưa có key): tạo key.
@@ -227,4 +367,4 @@ async function createRepo({ alias, owner, name, private: priv = true } = {}) {
   return `${sshTarget(get(alias))}:${repo.full_name}.git`;
 }
 
-module.exports = { list, check, add, createKey, saveToken, createRepo };
+module.exports = { list, check, add, update, remove, createKey, saveToken, createRepo };

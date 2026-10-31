@@ -414,6 +414,12 @@ dialog label.inline input { width: auto; }
 .acct-add { display: flex; flex-wrap: wrap; gap: 6px; }
 .acct-add input { flex: 2 1 180px; min-width: 0; }
 .acct-add #acct-host { flex: 1 1 100px; }
+.acct-add #acct-label { flex: 1 1 100%; }
+.acct-head .ellipsis { min-width: 0; }
+.acct-edit label { font-size: 13px; }
+.acct-edit-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.acct-edit-row label { flex: 1 1 140px; min-width: 0; }
+.acct-edit .error:empty { display: none; }
 .seg { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .seg label { flex: 1; display: block; text-align: center; padding: 8px 4px; font-size: 13px; color: var(--text); cursor: pointer; }
 .seg label + label { border-left: 1px solid var(--border); }
