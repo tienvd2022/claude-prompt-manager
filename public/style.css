@@ -387,6 +387,7 @@ dialog fieldset { border: 1px solid var(--border); border-radius: 6px; display: 
 dialog legend { color: var(--muted); font-size: 13px; padding: 0 4px; }
 dialog label.inline { display: flex; align-items: center; gap: 6px; color: var(--text); font-size: 14px; }
 dialog label.inline input { width: auto; }
+.sheet-close { display: none; }
 .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .dlg-head .small-btn { padding: 6px 10px; font-size: 13px; }
@@ -596,6 +597,11 @@ body.preview-open .stage > .empty { display: none; }
   }
   /* Vạch kéo ở đầu sheet cho dễ nhận ra là bottom sheet */
   dialog:modal::before { content: ''; position: absolute; top: 6px; left: 50%; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: var(--border); }
+  /* Nút ✕ của sheet: dải trên cùng (cạnh vạch kéo), dính ở đầu khi cuộn; cao 0 nên không đẩy nội dung.
+     top âm vì sticky tính từ mép trong padding của sheet */
+  dialog.has-sheet-close:modal { padding-top: 46px; }
+  dialog:modal > .sheet-close { display: flex; justify-content: flex-end; position: sticky; top: -42px; height: 0; margin: -42px -10px 42px 0; z-index: 2; }
+  .sheet-x { display: flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex: none; border: 1px solid var(--border); border-radius: 50%; background: var(--panel-2); color: var(--text); font-size: 16px; cursor: pointer; user-select: none; }
   /* Sheet chiếm gần hết màn: xem file, trình duyệt, vẽ phác, nội dung phiên */
   dialog.dlg-wide:modal { height: calc(var(--app-height) - 24px); padding: 18px 8px calc(8px + env(safe-area-inset-bottom)); }
   dialog.dlg-wide:modal:not(.dlg-file):not(.dlg-browser):not(.dlg-sketch):not(.dlg-text) { height: auto; }

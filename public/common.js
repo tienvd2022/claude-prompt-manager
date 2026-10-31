@@ -84,16 +84,30 @@ export function formatSize(n) {
 export const isTouch = matchMedia('(pointer: coarse)').matches;
 export const isNarrow = () => matchMedia('(max-width: 760px)').matches;
 
-// Điện thoại (dialog là bottom sheet): chạm vào vùng tối phía trên sheet thì đóng, đi qua sự kiện cancel như phím Esc
-// để dialog nào cần hỏi trước khi bỏ (vd vẽ phác) vẫn hỏi được.
+// Đóng dialog như bấm Esc (qua sự kiện cancel), để dialog nào cần hỏi trước khi bỏ (vd vẽ phác) vẫn hỏi được.
+function closeSheet(dlg) {
+  if (dlg.requestClose) dlg.requestClose();
+  else if (dlg.dispatchEvent(new Event('cancel', { cancelable: true }))) dlg.close();
+}
+
+// Điện thoại (dialog là bottom sheet): chạm vào vùng tối phía trên sheet thì đóng.
 document.addEventListener('click', (e) => {
   const dlg = e.target;
   if (!(dlg instanceof HTMLDialogElement) || !dlg.open || !isNarrow()) return;
   const r = dlg.getBoundingClientRect();
-  if (e.clientY >= r.top) return;
-  if (dlg.requestClose) dlg.requestClose();
-  else if (dlg.dispatchEvent(new Event('cancel', { cancelable: true }))) dlg.close();
+  if (e.clientY < r.top) closeSheet(dlg);
 });
+
+// Nút ✕ ở góc trên sheet (chỉ hiện trên điện thoại, style.css), luôn nằm trên cùng khi cuộn sheet dài.
+// Dialog đã có sẵn ✕ ở đầu (xem file, trình duyệt, vẽ phác…) thì không thêm.
+for (const dlg of document.querySelectorAll('dialog')) {
+  if (dlg.querySelector('.icon-btn[aria-label="Đóng"]')) continue;
+  // Dùng div chứ không phải <button>: mở dialog thì trình duyệt focus vào phần tử focus được đầu tiên,
+  // phải để focus vào ô nhập/nút như cũ chứ không nhảy vào nút ✕ (tabindex -1 cũng không ngăn được).
+  const btn = el('div', { class: 'sheet-x', role: 'button', 'aria-label': 'Đóng', text: '✕', onclick: () => closeSheet(dlg) });
+  dlg.classList.add('has-sheet-close');
+  dlg.prepend(el('div', { class: 'sheet-close' }, btn));
+}
 
 // ---------- Thông báo nhanh ----------
 
