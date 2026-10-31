@@ -1,4 +1,4 @@
-// Panel git của dự án: nhánh, thay đổi, commit, lịch sử, fetch/pull/push và tự đồng bộ.
+// Panel git của dự án: nhánh, thay đổi, commit, lịch sử, fetch/pull/push, tự đồng bộ và khóa dự án khi đang pull/xử lý xung đột.
 
 import { $, el, api, projectUrl, timeAgo, toast, showText, followJob } from './common.js';
 import { openViewer } from './viewer.js';
@@ -17,7 +17,12 @@ const branchForm = $('#branch-form');
 const dlgRemote = $('#dlg-remote');
 const remoteForm = $('#remote-form');
 
+const lockEl = $('#project-lock');
+
 const SYNC_EVERY_MS = 10000;
+const WATCH_MS = 5000; // xem khóa/trạng thái git kể cả khi không tự đồng bộ (máy khác đang pull, Claude đang xử lý)
+const LOCK_WATCH_MS = 2000;
+const SESSION_STATE = { busy: 'Claude đang xử lý…', sent: 'Claude đang xử lý…', idle: 'Claude đã dừng nhưng merge chưa xong, mở phiên xem giúp', waiting: 'Claude đang chờ anh cho phép, mở phiên để duyệt', ended: 'Phiên Claude đã thoát, merge chưa xong' };
 const XY_LABEL = { M: 'sửa', A: 'thêm', D: 'xóa', R: 'đổi tên', C: 'chép', U: 'xung đột', T: 'đổi loại' };
 
 let project = null;
@@ -26,16 +31,40 @@ let view = 'changes';
 let commit = null; // commit đang xem chi tiết
 let lastStatus = null;
 
-// Tự đồng bộ: mặc định tắt mỗi lần vào dự án, chỉ áp dụng cho nhánh lúc bật; đổi nhánh là tự tắt.
-// Bật lên thì pull một lần (nếu fast-forward được), sau đó chỉ push commit có sẵn, không bao giờ tự commit.
+// Tự đồng bộ: mặc định (bật/tắt) chỉnh trong ⚙ Cài đặt Git. Mặc định tắt thì mỗi lần vào dự án là tắt, đổi nhánh
+// cũng tự tắt; mặc định bật thì vào dự án hay đổi nhánh đều tự bật cho nhánh mới.
+// Bật lên thì pull một lần (merge, xung đột thì giao Claude xử lý và khóa dự án), sau đó có commit mới là push,
+// không bao giờ tự commit.
+let autoSyncDefault = false;
+const settingsReady = api('GET', '/api/git/config').then((c) => { autoSyncDefault = c.autoSync === true; }, () => {});
+let openSession = () => {};
+let watchTimer = null;
+let lockShown = null; // khóa đang hiện, để không vẽ lại liên tục
+let lockFull = true; // false: anh đã bấm mở phiên Claude, chỉ còn thanh báo nhỏ
 let syncTimer = null;
 let syncBranch = null; // nhánh lúc bật tự đồng bộ
 let syncing = false;
 let pushTried = null; // HEAD đã thử tự push, để push lỗi thì không thử lại mãi
+let pullTried = null; // như trên cho pull lỗi (không phải xung đột)
 let syncNote = '';
 
-export function initGit() {
+export function initGit(opts = {}) {
+  openSession = opts.openSession || openSession;
   initRemote();
+  $('#lock-open').addEventListener('click', () => {
+    lockFull = false;
+    renderLock(lastStatus);
+    if (lastStatus?.lock?.session) openSession(lastStatus.lock.session);
+  });
+  $('#lock-resolve').addEventListener('click', () => askClaude());
+  $('#lock-release').addEventListener('click', async () => {
+    try {
+      await api('DELETE', projectUrl(project, '/git/lock'));
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    fetchStatus();
+  });
   $('#git-refresh').addEventListener('click', () => load());
   document.querySelectorAll('[data-git]').forEach((btn) => btn.addEventListener('click', () => runRemote(btn.dataset.git)));
   document.querySelectorAll('[data-gitview]').forEach((btn) => btn.addEventListener('click', () => setView(btn.dataset.gitview)));
@@ -90,9 +119,23 @@ export function initGit() {
   });
 }
 
-export function setGitProject(name) {
+// Lưu cài đặt git xong (app.js): áp dụng mặc định mới cho các lần vào dự án/đổi nhánh sau.
+export function setAutoSyncDefault(on) {
+  autoSyncDefault = on;
+}
+
+export function getAutoSyncDefault() {
+  return autoSyncDefault;
+}
+
+export async function setGitProject(name) {
   if (project === name) return;
   stopAutoSync();
+  clearTimeout(watchTimer);
+  watchTimer = null;
+  lockShown = null;
+  lockFull = true;
+  renderLock(null);
   project = name;
   jobEl.hidden = true;
   infoEl.replaceChildren();
@@ -102,9 +145,32 @@ export function setGitProject(name) {
   lastStatus = null;
   syncNote = '';
   pushTried = null;
+  pullTried = null;
   if (view === 'commit') view = 'log';
   showView();
   turnOffSync();
+  if (!name) return;
+  watch();
+  await settingsReady;
+  if (project === name && autoSyncDefault) turnOnSync();
+}
+
+function turnOnSync() {
+  autoSyncBox.checked = true;
+  syncBranch = null;
+  syncNote = '';
+  startAutoSync();
+}
+
+// Xem trạng thái git định kỳ: thấy khóa (máy khác đang pull, Claude đang xử lý xung đột) để khóa giao diện.
+function watch() {
+  clearTimeout(watchTimer);
+  const current = project;
+  watchTimer = setTimeout(async () => {
+    if (current !== project) return;
+    if (document.visibilityState === 'visible' && !syncing) await fetchStatus();
+    if (current === project) watch();
+  }, lastStatus?.lock ? LOCK_WATCH_MS : WATCH_MS);
 }
 
 function turnOffSync() {
@@ -131,15 +197,28 @@ export async function load() {
 }
 
 function render(st) {
-  // Nhánh đổi (bấm đổi nhánh, hoặc Claude/terminal checkout): tắt tự đồng bộ.
+  // Nhánh đổi (bấm đổi nhánh, hoặc Claude/terminal checkout): mặc định tắt thì tắt tự đồng bộ,
+  // mặc định bật thì đồng bộ luôn nhánh mới.
   if (autoSyncBox.checked) {
     if (syncBranch == null) syncBranch = st.branch;
     else if (st.branch !== syncBranch) {
-      turnOffSync();
-      toast(`Đã đổi sang nhánh ${st.branch || '?'}, tắt tự đồng bộ`);
+      if (autoSyncDefault) {
+        toast(`Đã đổi sang nhánh ${st.branch || '?'}, tự đồng bộ nhánh này`);
+        setTimeout(turnOnSync);
+      } else {
+        turnOffSync();
+        toast(`Đã đổi sang nhánh ${st.branch || '?'}, tắt tự đồng bộ`);
+      }
     }
   }
+  const wasLocked = !!lastStatus?.lock;
   lastStatus = st;
+  renderLock(st);
+  // Claude merge xong (hết khóa): push ngay, không chờ vòng sau.
+  if (wasLocked && !st.lock && !st.merging && autoSyncBox.checked) {
+    note('đã xử lý xong xung đột');
+    setTimeout(syncTick);
+  }
   repoEl.hidden = !st.repo;
   noRepoEl.hidden = st.repo;
   if (!st.repo) return;
@@ -318,7 +397,8 @@ async function switchBranch(name, create) {
   }
   commit = null;
   if (view === 'commit') setView('log');
-  turnOffSync();
+  if (autoSyncDefault && autoSyncBox.checked) turnOnSync();
+  else turnOffSync();
   await load();
 }
 
@@ -326,7 +406,62 @@ async function switchBranch(name, create) {
 
 function setRunning(on) {
   running = on;
-  document.querySelectorAll('[data-git]').forEach((b) => { b.disabled = on; });
+  updateDisabled();
+}
+
+function updateDisabled() {
+  const locked = !!lastStatus?.lock;
+  document.querySelectorAll('[data-git]').forEach((b) => { b.disabled = running || locked; });
+  $('#git-branch').disabled = locked;
+  autoSyncBox.disabled = locked;
+  commitForm.querySelectorAll('button, textarea, input').forEach((x) => { x.disabled = locked; });
+}
+
+// ---------- Khóa dự án: đang pull, hoặc Claude đang xử lý xung đột merge ----------
+
+async function renderLock(st) {
+  updateDisabled();
+  const lock = st?.lock || null;
+  // Còn merge dở có xung đột mà không ai xử lý (vd restart server, hoặc merge tay): chỉ báo, cho bấm giao Claude.
+  const orphan = !lock && st?.merging && st.changes.some((c) => c.conflict);
+  const key = lock ? `${lock.kind}:${lock.session || ''}:${lockFull}` : orphan ? 'orphan' : null;
+  if (!key) {
+    lockEl.hidden = true;
+    lockShown = null;
+    lockFull = true;
+    return;
+  }
+  let text;
+  if (lock?.kind === 'pull') text = 'Đang tự pull từ remote, dự án tạm khóa…';
+  else if (lock) {
+    const s = await api('GET', projectUrl(project, '/sessions')).then((r) => r.sessions.find((x) => x.name === lock.session), () => null);
+    text = `Xung đột khi pull, đang giao Claude xử lý (phiên “Xử lý xung đột”). ${s ? SESSION_STATE[s.state] || 'Claude đang khởi động…' : SESSION_STATE.ended}`;
+  } else text = 'Nhánh đang merge dở và còn xung đột. Giao Claude xử lý, hoặc tự xử lý trong terminal rồi commit.';
+  lockEl.hidden = false;
+  lockEl.classList.toggle('full', !!lock && lockFull);
+  $('#lock-text').textContent = text;
+  $('#lock-spin').hidden = !lock;
+  $('#lock-open').hidden = !lock?.session || !lockFull;
+  $('#lock-resolve').hidden = !orphan;
+  $('#lock-release').hidden = lock?.kind !== 'conflict';
+  if (lockShown !== key && lock?.kind === 'conflict' && lockShown?.startsWith('pull')) toast('Pull bị xung đột, đã giao Claude xử lý', 'error');
+  lockShown = key;
+}
+
+// Giao xung đột cho Claude: server mở phiên Claude riêng, gửi prompt xử lý, khóa dự án tới khi merge xong.
+async function askClaude() {
+  const current = project;
+  try {
+    const { session } = await api('POST', projectUrl(current, '/git/resolve'));
+    if (current !== project) return;
+    toast('Pull bị xung đột, đã giao Claude xử lý');
+    lockFull = true;
+    note('xung đột khi pull, Claude đang xử lý');
+    await fetchStatus();
+    return session;
+  } catch (err) {
+    if (current === project) toast(`Giao Claude xử lý xung đột lỗi: ${err.message}`, 'error');
+  }
 }
 
 async function runRemote(op) {
@@ -354,8 +489,9 @@ async function quietJob(op) {
     const done = await followJob(job, null);
     if (done.status !== 'ok' && current === project) {
       jobEl.hidden = false;
-      jobEl.textContent = `$ git ${op} (tự đồng bộ)\n${done.output.trim()}`;
-      toast(`Tự đồng bộ: git ${op} lỗi`, 'error');
+      const cmd = op === 'sync' ? 'pull' : op;
+      jobEl.textContent = `$ git ${cmd} (tự đồng bộ)\n${done.output.trim()}`;
+      if (!(op === 'sync' && /CONFLICT|conflict/.test(done.output))) toast(`Tự đồng bộ: git ${cmd} lỗi`, 'error');
     }
     return done.status === 'ok';
   } catch (err) {
@@ -383,6 +519,7 @@ function note(text, st) {
 function startAutoSync() {
   stopAutoSync();
   pushTried = null;
+  pullTried = null;
   syncOnEnter();
   syncTimer = setInterval(syncTick, SYNC_EVERY_MS);
 }
@@ -392,7 +529,7 @@ function stopAutoSync() {
   syncTimer = null;
 }
 
-// Vừa bật tự đồng bộ: fetch, pull nếu fast-forward được, rồi push nếu có commit mới.
+// Vừa bật tự đồng bộ (hoặc vừa vào dự án khi mặc định bật): fetch, pull (merge), rồi push nếu có commit mới.
 async function syncOnEnter() {
   if (syncing || running) return;
   syncing = true;
@@ -401,23 +538,37 @@ async function syncOnEnter() {
     let st = await fetchStatus();
     if (!st?.repo || !st.remote) return note(st?.repo ? 'chưa có remote origin' : '', st);
     if (!st.upstream) return note('nhánh chưa có trên remote, bấm Push lần đầu', st);
+    if (st.lock || st.merging) return note(st.lock ? 'dự án đang khóa' : 'đang merge dở, chờ xử lý xung đột', st);
     if (!(await quietJob('fetch')) || current !== project || !syncTimer) return;
     st = await fetchStatus();
     if (!st || !syncTimer) return;
-    if (st.behind && st.ahead) return note(`nhánh đã tách (↑${st.ahead} ↓${st.behind}), cần xử lý tay`, st);
-    if (st.behind) {
-      if (await quietJob('pull')) {
-        toast(`Đã tự pull ${st.behind} commit`);
-        note(`đã pull lúc ${new Date().toLocaleTimeString()}`);
-        load();
-      }
-      return;
-    }
-    note(`đã kiểm tra lúc ${new Date().toLocaleTimeString()}`, st);
+    if (st.behind && !(await pullNow(st))) return;
+    if (!st.behind) note(`đã kiểm tra lúc ${new Date().toLocaleTimeString()}`, st);
   } finally {
     syncing = false;
   }
   syncTick();
+}
+
+// Pull kiểu merge (server khóa dự án trong lúc pull). Xung đột thì giao Claude. Trả về true nếu pull xong không xung đột.
+async function pullNow(st) {
+  const current = project;
+  const ok = await quietJob('sync');
+  if (current !== project) return false;
+  const after = await fetchStatus();
+  if (after?.merging) {
+    await askClaude();
+    return false;
+  }
+  if (!ok) {
+    pullTried = after?.head ?? st.head; // vd file chưa commit chặn pull: chờ HEAD đổi mới thử lại
+    note('pull lỗi, xem chi tiết', after);
+    return false;
+  }
+  toast(`Đã tự pull ${st.behind} commit`);
+  note(`đã pull lúc ${new Date().toLocaleTimeString()}`, after);
+  load();
+  return true;
 }
 
 // Định kỳ: có commit mới (của mình hoặc Claude) mà chưa push thì push ngay.
@@ -427,14 +578,19 @@ async function syncTick() {
   try {
     const st = await fetchStatus();
     if (!syncTimer || !st?.repo || !st.upstream) return; // vừa đổi nhánh thì đã tắt
-    if (st.ahead && st.behind) return note(`nhánh đã tách (↑${st.ahead} ↓${st.behind}), cần xử lý tay`, st);
-    if (!st.ahead || st.behind || st.head === pushTried) return;
+    if (st.lock || st.merging) return;
+    // Remote có commit mới (biết được sau khi push bị từ chối rồi fetch): pull về trước, lần sau mới push.
+    if (st.behind) {
+      if (st.head !== pullTried) await pullNow(st);
+      return;
+    }
+    if (!st.ahead || st.head === pushTried) return;
     pushTried = st.head;
     if (await quietJob('push')) {
       toast(`Đã tự push ${st.ahead} commit`);
       note(`đã push lúc ${new Date().toLocaleTimeString()}`);
     } else {
-      // Push bị từ chối thường do remote có commit mới: fetch để biết có pull được không.
+      // Push bị từ chối thường do remote có commit mới: fetch, vòng sau thấy behind thì pull (merge) rồi push lại.
       await quietJob('fetch');
       note('push lỗi, xem chi tiết');
     }

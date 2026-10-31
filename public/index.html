@@ -43,6 +43,17 @@
       </header>
 
       <div class="body">
+        <div id="project-lock" class="project-lock" role="status" hidden>
+          <div class="lock-box">
+            <span id="lock-spin" class="spinner" aria-hidden="true"></span>
+            <span id="lock-text"></span>
+            <span class="lock-actions">
+              <button type="button" id="lock-open" class="primary-btn">Mở phiên Claude</button>
+              <button type="button" id="lock-resolve" class="primary-btn">Giao Claude xử lý</button>
+              <button type="button" id="lock-release" title="Bỏ khóa dự án (xung đột vẫn còn, tự xử lý)">Bỏ khóa</button>
+            </span>
+          </div>
+        </div>
         <aside id="sidebar" class="sidebar">
           <div class="sidebar-title ellipsis" id="sidebar-title"></div>
           <div class="panel-tabs" role="tablist">
@@ -91,7 +102,7 @@
                 <button data-git="pull">Pull</button>
                 <button data-git="push">Push</button>
                 <span class="grow"></span>
-                <label class="autosync" title="Chỉ cho nhánh hiện tại, mặc định tắt. Bật lên thì pull một lần nếu fast-forward được, sau đó có commit mới thì tự push (không tự commit). Đổi nhánh là tự tắt."><input type="checkbox" id="git-autosync"> Tự đồng bộ</label>
+                <label class="autosync" title="Cho nhánh hiện tại; mặc định bật/tắt chỉnh trong ⚙ Cài đặt Git. Bật lên thì pull một lần (xung đột thì giao Claude xử lý, dự án khóa tới khi xong), sau đó có commit mới thì tự push (không tự commit)."><input type="checkbox" id="git-autosync"> Tự đồng bộ</label>
               </div>
               <div id="git-info" class="git-info"></div>
               <pre id="git-job" class="job" hidden></pre>
@@ -289,6 +300,8 @@
       <label>Email hiện trong commit
         <input name="email" type="email" autocomplete="off" autocapitalize="none">
       </label>
+      <label class="inline"><input type="checkbox" name="autoSync"> Tự đồng bộ mặc định bật</label>
+      <p class="muted small">Bật thì vào dự án hay đổi nhánh là tự đồng bộ luôn: pull về (xung đột thì mở phiên Claude xử lý ngay, dự án khóa tới khi xong), có commit mới là push. Không bao giờ tự commit. Vẫn tắt được riêng từng lần trong panel Git.</p>
       <div class="ssh">
         <strong>Tài khoản git (SSH) của server</strong>
         <p class="muted small">Đọc từ ~/.ssh/config: mỗi alias một key riêng, clone/push bằng git@&lt;alias&gt;:user/repo.git là ra đúng tài khoản. Copy public key, add vào GitHub → Settings → SSH keys của tài khoản đó.</p>

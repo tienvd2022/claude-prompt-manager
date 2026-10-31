@@ -410,6 +410,39 @@ route('POST', '/api/projects/:p/git/commit', async (req, res, p) => {
   sendJson(res, 200, { output: await git.commitAll(p, body.message) });
 });
 route('POST', '/api/projects/:p/git/remote', async (req, res, p) => sendJson(res, 200, await git.setRemote(p, (await readJson(req)).url)));
+// Tự đồng bộ pull bị xung đột: mở một phiên Claude riêng để xử lý, khóa dự án tới khi merge được commit
+// (git.status tự mở khóa khi hết MERGE_HEAD). Web tự push sau đó, Claude không push.
+route('POST', '/api/projects/:p/git/resolve', async (req, res, p) => {
+  const st = await git.status(p);
+  if (!st.merging) throw projects.httpError(400, 'Không có merge nào đang dở');
+  const files = await git.conflictFiles(p);
+  let created;
+  try {
+    created = await tmux.create({ project: p, cwd: projects.projectDir(p), command: 'claude', prepare: browser.prepare, prompt: preview.PROMPT });
+    await tmux.setTitle(created.name, 'Xử lý xung đột');
+  } catch (err) {
+    throw projects.httpError(400, err.stderr?.trim() || err.message);
+  }
+  queue.add(created.name, conflictPrompt(st, files));
+  sendJson(res, 200, { session: created.name, lock: git.lockProject(p, 'conflict', { session: created.name }) });
+});
+route('DELETE', '/api/projects/:p/git/lock', async (req, res, p) => {
+  // Bỏ khóa thì Claude chưa nhận prompt xử lý xung đột cũng không nhận nữa.
+  const lock = git.unlockProject(p);
+  if (lock?.session) queue.drop(lock.session);
+  sendJson(res, 200, { ok: true });
+});
+
+function conflictPrompt(st, files) {
+  return [
+    `Tự đồng bộ vừa git pull (merge ${st.upstream || 'nhánh remote'} vào ${st.branch}) và bị xung đột${files.length ? ' ở các file:' : '.'}`,
+    ...files.map((f) => `- ${f}`),
+    '',
+    'Hãy xử lý xung đột này ngay: đọc thay đổi của cả hai phía (git diff, git log --merge), giữ đúng ý của cả hai bên, xóa hết dấu <<<<<<< ======= >>>>>>>, chạy test/build nếu dự án có.',
+    'Xong thì git add các file đó và git commit --no-edit để hoàn tất merge.',
+    'Không push (web tự push sau khi merge xong), không đổi nhánh. Chỉ git merge --abort nếu thật sự không xử lý được, khi đó dừng lại và giải thích lý do.',
+  ].join('\n');
+}
 route('POST', '/api/projects/:p/git/:op', async (req, res, p, op) => sendJson(res, 202, { job: await git.remoteOp(p, op) }));
 route('GET', '/api/jobs/:id', async (req, res, id) => sendJson(res, 200, { job: git.getJob(id) }));
 

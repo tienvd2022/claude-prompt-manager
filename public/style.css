@@ -359,6 +359,19 @@ dialog .job { margin: 0; }
 .tab-dot.ended { background: transparent; border: 1px solid var(--muted); }
 .tab-queued { margin-left: 4px; font-size: 11px; color: var(--muted); }
 @keyframes pulse { 50% { opacity: .35; } }
+
+/* Khóa dự án khi tự đồng bộ đang pull / Claude đang xử lý xung đột: lớp phủ chặn thao tác, hoặc thanh báo nhỏ ở trên. */
+.project-lock { position: absolute; top: 0; left: 0; right: 0; z-index: 30; display: flex; justify-content: center; padding: 8px; pointer-events: none; }
+.project-lock[hidden] { display: none; }
+.project-lock.full { bottom: 0; align-items: center; padding: 16px; background: rgba(0, 0, 0, .55); pointer-events: auto; }
+.lock-box { pointer-events: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; max-width: 520px; padding: 8px 12px; border: 1px solid #e5c04f; border-radius: 10px; background: var(--panel-2); box-shadow: 0 4px 14px rgba(0, 0, 0, .4); font-size: 13px; }
+.project-lock.full .lock-box { padding: 16px; font-size: 14px; }
+.lock-box #lock-text { flex: 1 1 220px; }
+.lock-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.lock-actions button[hidden] { display: none; }
+.spinner { width: 16px; height: 16px; flex: none; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+.spinner[hidden] { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .history-list .prompt-text { width: 100%; text-align: left; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .prompt-form { display: flex; gap: 6px; align-items: flex-end; }
 .prompt-form textarea { resize: none; min-height: 38px; max-height: 160px; }
