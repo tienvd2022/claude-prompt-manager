@@ -294,11 +294,12 @@
         <p class="muted small">Đọc từ ~/.ssh/config: mỗi alias một key riêng, clone/push bằng git@&lt;alias&gt;:user/repo.git là ra đúng tài khoản. Copy public key, add vào GitHub → Settings → SSH keys của tài khoản đó.</p>
         <ul id="git-accounts" class="acct-list"></ul>
         <div class="acct-add">
+          <input id="acct-label" placeholder="tên gợi nhớ, vd Cá nhân (không bắt buộc)" maxlength="60" autocomplete="off" aria-label="Tên gợi nhớ">
           <input id="acct-alias" placeholder="alias mới, vd github.com-tienvd2022" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Alias mới">
           <input id="acct-host" value="github.com" autocomplete="off" autocapitalize="none" spellcheck="false" aria-label="Host">
           <button type="button" id="acct-add">＋ Thêm</button>
         </div>
-        <p class="muted small">Thêm alias: tạo key ed25519 mới và thêm khối Host vào ~/.ssh/config (config cũ sao lưu ở config.cpm-backup, không đụng key có sẵn).</p>
+        <p class="muted small">Thêm alias: tạo key ed25519 mới và thêm khối Host vào ~/.ssh/config (config cũ sao lưu ở config.cpm-backup, không đụng key có sẵn). Sửa/xóa alias cũng sao lưu như vậy; xóa alias không xóa file key.</p>
       </div>
       <p id="git-settings-error" class="error" role="alert"></p>
       <div class="dlg-actions">
