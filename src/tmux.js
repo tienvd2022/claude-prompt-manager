@@ -163,7 +163,13 @@ async function create({ project, cwd, command, alias, bypass, args, prepare, pro
       console.error(`[tmux] chuẩn bị trình duyệt cho ${name} lỗi: ${err.message}`);
     }
   }
-  const env = extra ? Object.entries(extra.env).flatMap(([k, v]) => ['-e', `${k}=${v}`]) : [];
+  // Lời dặn thêm cho Claude đi qua biến môi trường của phiên, không gõ thẳng vào lệnh: lời dặn dài,
+  // gõ lúc shell chưa sẵn sàng thì tty chỉ giữ ~1024 ký tự, phần sau bị rơi mất và lệnh kẹt giữa chừng.
+  const system = isClaude ? [prompt, extra?.prompt].filter(Boolean).join('\n\n') : '';
+  const env = [
+    ...(extra ? Object.entries(extra.env).flatMap(([k, v]) => ['-e', `${k}=${v}`]) : []),
+    ...(system ? ['-e', `CPM_SYSTEM_PROMPT=${system}`] : []),
+  ];
   // Gắn tên dự án, loại phiên, alias vào chính session tmux, để restart web vẫn biết phiên thuộc dự án nào.
   await tmux([
     'new-session', '-d', '-s', name, '-c', cwd, '-x', '160', '-y', '45', ...(isClaude ? ['-e', CLAUDE_ENV] : []), ...env,
@@ -175,8 +181,7 @@ async function create({ project, cwd, command, alias, bypass, args, prepare, pro
   if (isClaude) {
     // bypass: Claude tự chạy mọi lệnh mà không hỏi; mặc định là auto mode.
     const mode = bypass ? '--dangerously-skip-permissions' : '--permission-mode auto';
-    const system = [prompt, extra?.prompt].filter(Boolean).join('\n\n');
-    const more = `${extra ? ` --mcp-config ${shq(extra.mcpConfig)}` : ''}${system ? ` --append-system-prompt ${shq(system)}` : ''}`;
+    const more = `${extra ? ` --mcp-config ${shq(extra.mcpConfig)}` : ''}${system ? ' --append-system-prompt "$CPM_SYSTEM_PROMPT"' : ''}`;
     await tmux(['send-keys', '-t', `=${name}:`, `${alias} ${mode} ${HOOKS}${more}${extraArgs}`, 'Enter']);
   }
   return { name, project, kind, alias, cwd, browser: extra?.port || null };
