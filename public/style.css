@@ -359,7 +359,7 @@ dialog .job { margin: 0; }
 .tab-dot.ended { background: transparent; border: 1px solid var(--muted); }
 .tab-queued { margin-left: 4px; font-size: 11px; color: var(--muted); }
 @keyframes pulse { 50% { opacity: .35; } }
-.history-list .prompt-text { width: 100%; text-align: left; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.history-list .prompt-text { width: 100%; text-align: left; padding: 8px 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .prompt-form { display: flex; gap: 6px; align-items: flex-end; }
 .prompt-form textarea { resize: none; min-height: 38px; max-height: 160px; }
 .prompt-form button { height: 38px; }
