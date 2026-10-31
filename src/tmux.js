@@ -234,4 +234,13 @@ function attach(name, cols, rows) {
   });
 }
 
-module.exports = { SOCKET, validName, aliases, list, exists, create, setTitle, kill, history, setState, sendText, attach };
+// PID của tmux server (cha của mọi phiên Claude); không có phiên nào thì null.
+async function serverPid() {
+  try {
+    return Number((await tmux(['display-message', '-p', '#{pid}'])).trim()) || null;
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { SOCKET, serverPid, validName, aliases, list, exists, create, setTitle, kill, history, setState, sendText, attach };

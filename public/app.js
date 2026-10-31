@@ -187,6 +187,56 @@ $('#browse-form').addEventListener('submit', async (e) => {
   }
 });
 
+// ---------- Thanh tài nguyên server (RAM, disk) dưới thanh tab ----------
+const statbar = $('#statbar');
+const fmtBytes = (n) => n >= 1024 ** 3 ? `${(n / 1024 ** 3).toFixed(n >= 100 * 1024 ** 3 ? 0 : 1)} GB` : `${Math.round(n / 1024 ** 2)} MB`;
+
+function statMeter(used, total) {
+  const pct = total ? Math.min(100, (used / total) * 100) : 0;
+  const m = el('span', { class: `meter${pct >= 90 ? ' bad' : pct >= 75 ? ' warn' : ''}` });
+  const bar = el('i');
+  bar.style.width = `${pct}%`;
+  m.append(bar);
+  return m;
+}
+
+function statItem(label, value, title, meter) {
+  const it = el('span', { class: 'st', title });
+  it.append(label);
+  if (meter) it.append(meter);
+  it.append(el('b', { text: value }));
+  return it;
+}
+
+function renderStats(s) {
+  const { ram, disk, user } = s;
+  const items = [
+    statItem('RAM', `${fmtBytes(ram.used)}/${fmtBytes(ram.total)}`, `RAM server đã dùng ${Math.round((ram.used / ram.total) * 100)}% (không tính cache)`, statMeter(ram.used, ram.total)),
+  ];
+  if (ram.user) items.push(statItem(user, fmtBytes(ram.user), `RAM các tiến trình của ${user} (cộng RSS, gần đúng)`));
+  items.push(statItem('App', fmtBytes(ram.app), 'RAM của app này (server node + Chromium/tiến trình con)'));
+  if (ram.claude) items.push(statItem('Claude', fmtBytes(ram.claude), 'RAM các phiên Claude đang chạy trong tmux'));
+  if (disk) {
+    items.push(el('span', { class: 'sep' }));
+    items.push(statItem('Disk', `${fmtBytes(disk.used)}/${fmtBytes(disk.total)}`, `Ổ chứa dự án: còn trống ${fmtBytes(disk.free)}`, statMeter(disk.used, disk.total)));
+    items.push(statItem(user, disk.user == null ? '…' : fmtBytes(disk.user), disk.user == null ? `Đang tính dung lượng ${disk.home}…` : `Dung lượng thư mục ${disk.home} (tính lại mỗi 10 phút)`));
+  }
+  statbar.replaceChildren(...items);
+}
+
+async function pollStats() {
+  if (!viewWorkspace.hidden && document.visibilityState === 'visible') {
+    try {
+      renderStats(await api('GET', '/api/stats'));
+    } catch {
+      // mất kết nối thì giữ số cũ
+    }
+  }
+  setTimeout(pollStats, 5000);
+}
+pollStats();
+new MutationObserver(() => !viewWorkspace.hidden && api('GET', '/api/stats').then(renderStats, () => {})).observe(viewWorkspace, { attributes: true, attributeFilter: ['hidden'] });
+
 // Tạo dự án: thư mục trống (không git), clone từ URL, tạo repo mới trên GitHub qua một tài khoản rồi clone về,
 // hoặc upload một thư mục / file .zip từ máy.
 const dlgProject = $('#dlg-project');
