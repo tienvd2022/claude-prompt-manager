@@ -105,7 +105,10 @@
                 <label class="autosync" title="Cho nhánh hiện tại; mặc định bật/tắt chỉnh trong ⚙ Cài đặt Git. Bật lên thì pull một lần (xung đột thì giao Claude xử lý, dự án khóa tới khi xong), sau đó có commit mới thì tự push (không tự commit)."><input type="checkbox" id="git-autosync"> Tự đồng bộ</label>
               </div>
               <div id="git-info" class="git-info"></div>
-              <pre id="git-job" class="job" hidden></pre>
+              <div id="git-job-box" class="job-box" hidden>
+                <pre id="git-job" class="job"></pre>
+                <button type="button" id="git-job-close" class="icon-btn small job-close" title="Ẩn log" aria-label="Ẩn log">✕</button>
+              </div>
               <div class="git-tabs" role="tablist">
                 <button data-gitview="changes" role="tab">Thay đổi (<span id="git-count">0</span>)</button>
                 <button data-gitview="log" role="tab">Lịch sử</button>

@@ -90,6 +90,12 @@ export default function WebScreen({ url, onSwitchServer }: Props) {
     web.current?.reload();
   }
 
+  // Server không phản hồi (đã tắt, sai địa chỉ) thì WebView chờ rất lâu mới báo lỗi: cho dừng hoặc đổi server ngay.
+  function stop() {
+    web.current?.stopLoading();
+    setError('Đã dừng kết nối');
+  }
+
   return (
     <View style={[styles.root, { paddingBottom: keyboard }]}>
       <WebView
@@ -110,8 +116,17 @@ export default function WebScreen({ url, onSwitchServer }: Props) {
         onRenderProcessGone={() => web.current?.reload()}
         startInLoadingState
         renderLoading={() => (
-          <View style={[StyleSheet.absoluteFill, styles.center]}>
+          <View style={[StyleSheet.absoluteFill, styles.center, styles.overlay]}>
             <ActivityIndicator color={colors.accent} size="large" />
+            <Text style={styles.muted}>Đang kết nối {hostOf(url)}…</Text>
+            <View style={styles.actions}>
+              <Pressable style={styles.secondary} onPress={stop}>
+                <Text style={styles.secondaryText}>Dừng</Text>
+              </Pressable>
+              <Pressable style={styles.secondary} onPress={onSwitchServer}>
+                <Text style={styles.secondaryText}>Đổi server</Text>
+              </Pressable>
+            </View>
           </View>
         )}
         sharedCookiesEnabled

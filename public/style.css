@@ -264,6 +264,9 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
   overflow-wrap: anywhere;
 }
 dialog .job { margin: 0; }
+.job-box { position: relative; margin: 0 8px 8px; }
+.job-box .job { margin: 0; padding-right: 34px; }
+.job-close { position: absolute; top: 4px; right: 4px; background: var(--panel-2); }
 .branch-btn { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; font-weight: 600; }
 .branch-btn .ellipsis { min-width: 0; }
 .git-ops { padding-top: 0; }
