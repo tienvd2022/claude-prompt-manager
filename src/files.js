@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
-const { httpError, projectDir } = require('./projects');
+const { httpError, projectDir, PROJECTS_DIR, ensureRoot, checkNewName } = require('./projects');
 
 const MAX_UPLOAD = Number(process.env.MAX_UPLOAD_MB || 512) * 1024 * 1024;
 const MAX_ENTRIES = 5000;
@@ -162,20 +162,11 @@ async function writeText(project, rel, text, mtime) {
   return { size: after.size, mtime: after.mtimeMs };
 }
 
-// Nhận body thô và ghi vào file tạm, xong mới đổi tên, để file dở dang không đè file cũ.
-async function upload(req, project, dirRel, name, overwrite) {
-  checkEntryName(name);
-  const { full: dir } = resolve(project, dirRel);
-  if (!fs.statSync(dir).isDirectory()) throw httpError(400, 'Không phải thư mục');
-  const target = path.join(dir, name);
-  const existing = fs.lstatSync(target, { throwIfNoEntry: false });
-  if (existing?.isDirectory()) throw httpError(409, `"${name}" là thư mục đã có`);
-  if (existing && !overwrite) throw httpError(409, `"${name}" đã có`);
+// Ghi body thô của request vào file tmp (tạo mới), lỗi hay bị ngắt thì xóa file tmp.
+function receiveTo(req, tmp) {
   const declared = Number(req.headers['content-length'] || 0);
-  if (declared > MAX_UPLOAD) throw httpError(413, `File quá lớn (tối đa ${MAX_UPLOAD / 1024 / 1024} MB)`);
-
-  const tmp = path.join(dir, `.${name.slice(0, 200)}.cpm-upload-${crypto.randomBytes(4).toString('hex')}`);
-  await new Promise((resolvePromise, reject) => {
+  if (declared > MAX_UPLOAD) return Promise.reject(httpError(413, `File quá lớn (tối đa ${MAX_UPLOAD / 1024 / 1024} MB)`));
+  return new Promise((resolvePromise, reject) => {
     const out = fs.createWriteStream(tmp, { flags: 'wx', mode: 0o644 });
     let size = 0;
     let failed = false;
@@ -202,6 +193,34 @@ async function upload(req, project, dirRel, name, overwrite) {
     });
     req.pipe(out);
   });
+}
+
+// Tạo dần các thư mục con của dirRel (như mkdir -p), mỗi bước đều kiểm tra không ra ngoài dự án.
+function mkdirs(project, dirRel) {
+  const parts = String(dirRel || '').replace(/\\/g, '/').split('/').filter((x) => x && x !== '.');
+  for (let i = 1; i <= parts.length; i++) {
+    checkEntryName(parts[i - 1]);
+    const { full } = resolve(project, parts.slice(0, i).join('/'), { mustExist: false });
+    const st = fs.statSync(full, { throwIfNoEntry: false });
+    if (!st) fs.mkdirSync(full, { mode: 0o755 });
+    else if (!st.isDirectory()) throw httpError(409, `"${parts.slice(0, i).join('/')}" không phải thư mục`);
+  }
+}
+
+// Nhận body thô và ghi vào file tạm, xong mới đổi tên, để file dở dang không đè file cũ.
+// makeDirs: tạo thư mục còn thiếu (dùng khi upload cả thư mục).
+async function upload(req, project, dirRel, name, overwrite, makeDirs = false) {
+  checkEntryName(name);
+  if (makeDirs) mkdirs(project, dirRel);
+  const { full: dir } = resolve(project, dirRel);
+  if (!fs.statSync(dir).isDirectory()) throw httpError(400, 'Không phải thư mục');
+  const target = path.join(dir, name);
+  const existing = fs.lstatSync(target, { throwIfNoEntry: false });
+  if (existing?.isDirectory()) throw httpError(409, `"${name}" là thư mục đã có`);
+  if (existing && !overwrite) throw httpError(409, `"${name}" đã có`);
+
+  const tmp = path.join(dir, `.${name.slice(0, 200)}.cpm-upload-${crypto.randomBytes(4).toString('hex')}`);
+  await receiveTo(req, tmp);
   await fs.promises.rename(tmp, target);
   return { name, size: fs.statSync(target).size };
 }
@@ -241,6 +260,59 @@ async function savePaste(req, project) {
   return { path: `${PASTE_DIR}/${name}` };
 }
 
+// Tạo dự án từ file .zip: nhận về file tạm, giải nén bằng zipfile của python3 (tự bỏ đường dẫn tuyệt đối
+// và "..", không tạo symlink), zip chỉ có một thư mục gốc thì lấy luôn thư mục đó làm dự án.
+const MAX_UNZIP = Number(process.env.MAX_UNZIP_MB || 4096) * 1024 * 1024;
+const UNZIP_PY = `
+import sys, zipfile
+src, dest, limit = sys.argv[1], sys.argv[2], int(sys.argv[3])
+try:
+    z = zipfile.ZipFile(src)
+except zipfile.BadZipFile:
+    sys.exit("File không phải zip hợp lệ")
+with z:
+    infos = [i for i in z.infolist() if not i.filename.startswith('__MACOSX/') and not i.filename.endswith('.DS_Store')]
+    if sum(i.file_size for i in infos) > limit:
+        sys.exit("Giải nén ra quá lớn")
+    for i in infos:
+        z.extract(i, dest)
+`;
+
+function runUnzip(zip, dest) {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn('python3', ['-I', '-c', UNZIP_PY, zip, dest, String(MAX_UNZIP)], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    child.stderr.on('data', (d) => { err += d; });
+    child.on('error', () => reject(httpError(500, 'Server chưa có python3 để giải nén')));
+    child.on('close', (code) => {
+      if (code === 0) return resolvePromise();
+      const last = err.trim().split('\n').pop() || 'Giải nén lỗi';
+      reject(httpError(400, last.replace(/^\w+Error: /, '')));
+    });
+  });
+}
+
+async function importZip(req, name) {
+  ensureRoot();
+  checkNewName(name);
+  const tag = crypto.randomBytes(4).toString('hex');
+  const zip = path.join(PROJECTS_DIR, `.${name}.cpm-zip-${tag}`);
+  const tmpDir = path.join(PROJECTS_DIR, `.${name}.cpm-import-${tag}`);
+  try {
+    await receiveTo(req, zip);
+    await fs.promises.mkdir(tmpDir, { mode: 0o755 });
+    await runUnzip(zip, tmpDir);
+    const top = (await fs.promises.readdir(tmpDir, { withFileTypes: true })).filter((d) => d.name !== '__MACOSX' && d.name !== '.DS_Store');
+    const src = top.length === 1 && top[0].isDirectory() ? path.join(tmpDir, top[0].name) : tmpDir;
+    checkNewName(name); // có thể vừa có người tạo trùng tên trong lúc upload
+    await fs.promises.rename(src, path.join(PROJECTS_DIR, name));
+    return { name };
+  } finally {
+    fs.rm(zip, { force: true }, () => {});
+    fs.rm(tmpDir, { recursive: true, force: true }, () => {});
+  }
+}
+
 async function mkdir(project, dirRel, name) {
   checkEntryName(name);
   const { full: dir } = resolve(project, dirRel);
@@ -264,4 +336,4 @@ async function remove(project, rel) {
   await fs.promises.rm(full, { recursive: true });
 }
 
-module.exports = { resolve, excludeCpm, MAX_UPLOAD, MAX_TEXT, imageType, sendImage, image, readText, writeText, listDir, download, upload, savePaste, mkdir, rename, remove };
+module.exports = { resolve, excludeCpm, receiveTo, importZip, MAX_UPLOAD, MAX_TEXT, imageType, sendImage, image, readText, writeText, listDir, download, upload, savePaste, mkdir, rename, remove };

@@ -187,7 +187,8 @@ $('#browse-form').addEventListener('submit', async (e) => {
   }
 });
 
-// Tạo dự án: thư mục trống (không git), clone từ URL, hoặc tạo repo mới trên GitHub qua một tài khoản rồi clone về.
+// Tạo dự án: thư mục trống (không git), clone từ URL, tạo repo mới trên GitHub qua một tài khoản rồi clone về,
+// hoặc upload một thư mục / file .zip từ máy.
 const dlgProject = $('#dlg-project');
 const projectForm = $('#project-form');
 const projectNote = $('#project-note');
@@ -204,6 +205,7 @@ $('#btn-new-project').addEventListener('click', async () => {
   $('#project-error').textContent = '';
   $('#project-job').hidden = true;
   setProjectFormBusy(false);
+  uploadPick = null;
   showProjectMode();
   dlgProject.showModal();
   try {
@@ -220,6 +222,8 @@ function showProjectMode() {
   const mode = projectMode();
   $('#pm-clone').hidden = mode !== 'clone';
   $('#pm-create').hidden = mode !== 'create';
+  $('#pm-upload').hidden = mode !== 'upload';
+  projectForm.querySelector('button[value="ok"]').textContent = mode === 'upload' ? 'Upload' : 'Tạo';
   updateProjectNote();
 }
 
@@ -230,6 +234,10 @@ async function updateProjectNote() {
   const mode = projectMode();
   if (mode === 'empty') {
     projectNote.textContent = 'Chỉ tạo thư mục, chưa có git (vào panel Git bấm git init khi cần).';
+    return;
+  }
+  if (mode === 'upload') {
+    projectNote.textContent = uploadSummary();
     return;
   }
   if (mode === 'clone') {
@@ -259,7 +267,7 @@ async function updateProjectNote() {
 
 projectForm.addEventListener('change', (e) => {
   if (e.target.name === 'mode') showProjectMode();
-  else if (e.target.name === 'account' || e.target.name === 'cloneAccount' || e.target.name === 'private') updateProjectNote();
+  else if (['account', 'cloneAccount', 'private', 'skipJunk'].includes(e.target.name)) updateProjectNote();
 });
 projectForm.gitUrl.addEventListener('input', () => {
   // Dán URL có host trùng alias nào thì chọn sẵn tài khoản đó.
@@ -279,6 +287,128 @@ projectForm.owner.addEventListener('input', () => {
   updateProjectNote();
 });
 
+// ---- Upload thư mục / zip ----
+// Trình duyệt điện thoại (và WebView của app) không chọn được cả thư mục, chỉ chọn được file .zip.
+let uploadPick = null; // { kind: 'dir', files: [{ file, path }] } | { kind: 'zip', file }
+const dirInput = $('#pm-dir-input');
+const zipInput = $('#pm-zip-input');
+const canPickDir = 'webkitdirectory' in dirInput && !nativeApp && !/Android|iPhone|iPod/i.test(navigator.userAgent);
+$('#pm-pick-dir').hidden = !canPickDir;
+$('#pm-skip-wrap').hidden = !canPickDir;
+$('#pm-pick-dir').addEventListener('click', () => dirInput.click());
+$('#pm-pick-zip').addEventListener('click', () => zipInput.click());
+
+const JUNK_DIRS = new Set(['node_modules', '.venv', '__pycache__']);
+const isJunk = (p) => p.split('/').some((seg, i, all) => (i < all.length - 1 && JUNK_DIRS.has(seg)) || seg === '.DS_Store');
+const safeName = (s) => s.replace(/[^A-Za-z0-9._-]/g, '-').replace(/^[^A-Za-z0-9]+/, '').slice(0, 64);
+const fmtSize = (n) => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`;
+
+function pickedFiles() {
+  if (uploadPick?.kind !== 'dir') return [];
+  return projectForm.skipJunk.checked ? uploadPick.files.filter((f) => !isJunk(f.path)) : uploadPick.files;
+}
+
+function uploadSummary() {
+  if (!uploadPick) return canPickDir ? 'Chọn một thư mục trên máy (hoặc file .zip) để đưa lên server thành dự án mới.' : 'Chọn file .zip để giải nén trên server thành dự án mới.';
+  if (uploadPick.kind === 'zip') return `${uploadPick.file.name} (${fmtSize(uploadPick.file.size)}), sẽ giải nén trên server. Zip chỉ có một thư mục gốc thì lấy thư mục đó làm dự án.`;
+  const list = pickedFiles();
+  const skipped = uploadPick.files.length - list.length;
+  return `${uploadPick.root}: ${list.length} file, ${fmtSize(list.reduce((n, f) => n + f.file.size, 0))}${skipped ? ` (bỏ qua ${skipped} file)` : ''}.`;
+}
+
+function setPickName(base) {
+  if (!autoName && projectForm.name.value) return;
+  projectForm.name.value = safeName(base);
+  autoName = true;
+}
+
+dirInput.addEventListener('change', () => {
+  const all = [...dirInput.files];
+  dirInput.value = '';
+  if (!all.length) return;
+  // webkitRelativePath = "<thư mục đã chọn>/a/b.txt": bỏ phần đầu để file nằm thẳng trong dự án.
+  const root = all[0].webkitRelativePath.split('/')[0];
+  const files = all.map((file) => ({ file, path: file.webkitRelativePath.split('/').slice(1).join('/') })).filter((f) => f.path);
+  uploadPick = { kind: 'dir', root, files };
+  setPickName(root);
+  updateProjectNote();
+});
+zipInput.addEventListener('change', () => {
+  const file = zipInput.files[0];
+  zipInput.value = '';
+  if (!file) return;
+  uploadPick = { kind: 'zip', file };
+  setPickName(file.name.replace(/\.zip$/i, ''));
+  updateProjectNote();
+});
+
+// POST body thô, có tiến độ upload. Trả về { status, data }.
+function postRaw(url, body, onProgress) {
+  return new Promise((resolve) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    if (onProgress) xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded, e.total);
+    xhr.onload = () => {
+      let data = {};
+      try {
+        data = JSON.parse(xhr.responseText);
+      } catch {
+        // nginx trả HTML khi vượt giới hạn
+      }
+      if (xhr.status === 401) location.href = '/login';
+      if (xhr.status >= 300) data.error ||= xhr.status === 413 ? 'File quá lớn so với giới hạn của server' : `Lỗi ${xhr.status}`;
+      resolve({ status: xhr.status, data });
+    };
+    xhr.onerror = () => resolve({ status: 0, data: { error: 'Mất kết nối' } });
+    xhr.send(body);
+  });
+}
+
+async function uploadZip(name, file) {
+  const r = await postRaw(`/api/projects/import-zip?name=${encodeURIComponent(name)}`, file, (done, total) => {
+    projectNote.textContent = done < total ? `Đang upload ${file.name}: ${Math.round((done / total) * 100)}%` : 'Đang giải nén trên server…';
+  });
+  if (r.status !== 201) throw new Error(r.data.error);
+}
+
+async function uploadDir(name, list) {
+  if (!list.length) throw new Error('Thư mục không có file nào để upload');
+  await api('POST', '/api/projects', { name });
+  const total = list.reduce((n, f) => n + f.file.size, 0);
+  const loaded = new Map();
+  let doneCount = 0;
+  const failed = [];
+  const show = () => {
+    const bytes = [...loaded.values()].reduce((a, b) => a + b, 0);
+    projectNote.textContent = `Đang upload ${doneCount}/${list.length} file (${total ? Math.round((bytes / total) * 100) : 100}%)…`;
+  };
+  show();
+  let next = 0;
+  // Gửi song song vài file một lúc cho nhanh, mỗi file một request (không vướng giới hạn kích thước request của nginx).
+  const worker = async () => {
+    while (next < list.length) {
+      const f = list[next++];
+      const i = f.path.lastIndexOf('/');
+      const qs = new URLSearchParams({ path: i < 0 ? '' : f.path.slice(0, i), name: f.path.slice(i + 1), mkdirs: '1' });
+      const r = await postRaw(projectUrl(name, `/upload?${qs}`), f.file, (done) => {
+        loaded.set(f, done);
+        show();
+      });
+      loaded.set(f, f.file.size);
+      doneCount++;
+      if (r.status !== 201) failed.push(`${f.path}: ${r.data.error}`);
+      show();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, list.length) }, worker));
+  if (failed.length) {
+    $('#project-job').textContent = failed.join('\n');
+    $('#project-job').hidden = false;
+    throw new Error(`Đã tạo dự án "${name}" nhưng ${failed.length}/${list.length} file upload lỗi (xem ở trên).`);
+  }
+}
+
 function setProjectFormBusy(busy) {
   for (const b of projectForm.querySelectorAll('button, input, select')) b.disabled = busy;
 }
@@ -292,6 +422,8 @@ projectForm.addEventListener('submit', async (e) => {
   if (mode === 'clone') {
     if (!projectForm.gitUrl.value.trim()) return projectForm.gitUrl.focus();
     body.gitUrl = cloneUrl();
+  } else if (mode === 'upload') {
+    if (!uploadPick) return $('#pm-pick-dir').hidden ? $('#pm-pick-zip').click() : $('#pm-pick-dir').click();
   } else if (mode === 'create') {
     if (!projectForm.account.value) return;
     body.repo = { alias: projectForm.account.value, owner: projectForm.owner.value.trim() || undefined, private: projectForm.private.checked };
@@ -300,6 +432,13 @@ projectForm.addEventListener('submit', async (e) => {
   $('#project-error').textContent = '';
   setProjectFormBusy(true);
   try {
+    if (mode === 'upload') {
+      if (uploadPick.kind === 'zip') await uploadZip(name, uploadPick.file);
+      else await uploadDir(name, pickedFiles());
+      dlgProject.close();
+      location.hash = `#/p/${encodeURIComponent(name)}`;
+      return;
+    }
     const res = await api('POST', '/api/projects', body);
     if (res.job) {
       const job = await followJob(res.job, $('#project-job'));
