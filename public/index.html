@@ -222,6 +222,16 @@
         <label><input type="radio" name="mode" value="empty" checked> Thư mục trống</label>
         <label><input type="radio" name="mode" value="clone"> Clone</label>
         <label><input type="radio" name="mode" value="create"> Tạo repo mới</label>
+        <label><input type="radio" name="mode" value="upload"> Upload</label>
+      </div>
+      <div id="pm-upload" class="pm" hidden>
+        <div class="row-btns">
+          <button type="button" id="pm-pick-dir">📁 Chọn thư mục</button>
+          <button type="button" id="pm-pick-zip">🗜 Chọn file .zip</button>
+        </div>
+        <input type="file" id="pm-dir-input" webkitdirectory multiple hidden>
+        <input type="file" id="pm-zip-input" accept=".zip,application/zip,application/x-zip-compressed" hidden>
+        <label class="inline" id="pm-skip-wrap"><input type="checkbox" name="skipJunk" checked> Bỏ qua node_modules, .venv, __pycache__, .DS_Store</label>
       </div>
       <div id="pm-clone" class="pm" hidden>
         <label>URL git

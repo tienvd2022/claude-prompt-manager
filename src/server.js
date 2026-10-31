@@ -232,6 +232,9 @@ route('POST', '/api/projects', async (req, res) => {
   return sendJson(res, 201, projects.create(body.name));
 });
 
+// Tạo dự án từ file .zip (body thô là nội dung zip).
+route('POST', '/api/projects/import-zip', async (req, res, url) => sendJson(res, 201, await files.importZip(req, url.searchParams.get('name'))));
+
 route('GET', '/api/browse', async (req, res, url) => sendJson(res, 200, await projects.browse(url.searchParams.get('path'), { hidden: url.searchParams.get('hidden') === '1' })));
 route('POST', '/api/projects/open', async (req, res) => sendJson(res, 200, projects.open((await readJson(req)).path)));
 route('GET', '/api/projects/linked', async (req, res) => {
@@ -343,7 +346,7 @@ async function handleTicketDownload(res, token) {
 
 route('POST', '/api/projects/:p/upload', async (req, res, p, url) => {
   const q = url.searchParams;
-  sendJson(res, 201, await files.upload(req, p, q.get('path'), q.get('name'), q.get('overwrite') === '1'));
+  sendJson(res, 201, await files.upload(req, p, q.get('path'), q.get('name'), q.get('overwrite') === '1', q.get('mkdirs') === '1'));
 });
 route('POST', '/api/projects/:p/paste', async (req, res, p) => sendJson(res, 201, await files.savePaste(req, p)));
 route('POST', '/api/projects/:p/mkdir', async (req, res, p) => {

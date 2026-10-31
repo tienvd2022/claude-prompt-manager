@@ -450,6 +450,8 @@ dialog label.inline input { width: auto; }
 .seg input { position: absolute; opacity: 0; pointer-events: none; }
 .seg label:has(input:checked) { background: var(--accent); color: var(--accent-text, #fff); }
 .pm { display: grid; gap: 10px; }
+.pm .row-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.pm .row-btns button { flex: 1; }
 .git-remote { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .git-remote .icon-btn { flex: none; padding: 0 6px; }
 .dlg-wide { width: min(1000px, calc(100vw - 16px)); padding: 12px; }
