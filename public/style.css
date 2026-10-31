@@ -140,6 +140,27 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .tab-close { border: 0; background: transparent; color: var(--muted); padding: 5px 8px; }
 .tab-close:hover { color: var(--text); }
 
+/* Thanh tài nguyên server ngay dưới thanh tab */
+.statbar {
+  display: flex; align-items: center; gap: 12px; flex: none;
+  padding: 3px 10px; font-size: 11px; color: var(--muted); white-space: nowrap;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  overflow-x: auto; scrollbar-width: none;
+}
+.statbar::-webkit-scrollbar { display: none; }
+.statbar:empty { display: none; }
+.statbar .st { display: inline-flex; align-items: center; gap: 5px; }
+.statbar .st b { color: var(--text); font-weight: 500; }
+.statbar .sep { width: 1px; height: 12px; background: var(--border); }
+.statbar .meter { width: 44px; height: 5px; border-radius: 3px; background: var(--panel-2); overflow: hidden; }
+.statbar .meter i { display: block; height: 100%; background: var(--ok); }
+.statbar .meter.warn i { background: var(--accent); }
+.statbar .meter.bad i { background: var(--danger); }
+@media (max-width: 600px) {
+  .statbar { flex-wrap: wrap; row-gap: 2px; column-gap: 10px; }
+  .statbar .sep { flex-basis: 100%; height: 0; width: 0; }
+}
+
 .body {
   flex: 1;
   display: flex;
