@@ -1,6 +1,10 @@
-// Cảm ứng cho terminal trên điện thoại: kéo để cuộn (có quán tính), nhấn giữ để chọn chữ rồi copy.
-// xterm.js tự cuộn bằng scrollTop rồi làm tròn về dòng gần nhất, nên kéo chậm bị kéo ngược lại (khựng).
-// Ở đây gom quãng kéo theo pixel, đủ một dòng thì cuộn một dòng, và chặn handler cảm ứng của xterm.
+// Cảm ứng cho terminal trên điện thoại, chỉ 3 thao tác:
+// - kéo: cuộn (có quán tính);
+// - nhấn giữ: chọn chữ ở chỗ chạm, giữ rồi kéo luôn thì chọn tiếp tới chỗ ngón tay;
+// - thả tay ra thì hiện 2 tay kéo ở đầu/cuối vùng chọn để chỉnh lại, và thanh Copy.
+// Trình duyệt không được tự cuộn (touch-action: none trong style.css), không thì nó tranh với cuộn ở đây,
+// lúc cuộn được lúc không. xterm.js tự cuộn bằng scrollTop rồi làm tròn về dòng gần nhất, nên kéo chậm bị
+// kéo ngược lại (khựng): ở đây gom quãng kéo theo pixel, đủ một dòng thì cuộn một dòng, và chặn handler cảm ứng của xterm.
 
 import { el } from './common.js';
 
@@ -10,20 +14,27 @@ const FRICTION = 0.95; // mỗi khung hình 16ms
 const MIN_SPEED = 0.03; // px/ms
 
 export function attachTouch(term, box, { onCopy }) {
-  let start = null; // { x, y, time }
+  let mode = null; // 'pending' | 'scroll' | 'select' | 'handle'
+  let start = null; // { x, y }
   let lastY = 0;
   let acc = 0; // px kéo chưa đủ một dòng
   let samples = []; // [{ y, t }] để tính vận tốc lúc thả tay
   let fling = 0;
   let holdTimer = null;
-  let selecting = null; // { anchor } khi đang chọn chữ
-  let scrolled = false;
+  let sel = null; // { from, to } (ô trong buffer, from <= to) của vùng đang chọn
+  let anchor = null; // chữ chọn lúc nhấn giữ, để kéo tiếp về hai phía
+  let dragging = null; // 'from' | 'to': tay kéo đang được kéo
+  let grab = { dx: 0, dy: 0 }; // lệch giữa ngón tay và ô của tay kéo lúc bắt đầu kéo
 
   const bar = el('div', { class: 'term-selbar', hidden: true },
     el('button', { type: 'button', text: 'Copy', onclick: copy }),
-    el('button', { type: 'button', text: 'Hết', title: 'Chọn hết', onclick: () => term.selectAll() }),
+    el('button', { type: 'button', text: 'Hết', title: 'Chọn hết', onclick: selectAll }),
     el('button', { type: 'button', text: '✕', title: 'Bỏ chọn', onclick: clearSelection }));
-  box.append(bar);
+  const handles = {
+    from: el('div', { class: 'term-handle from', hidden: true }),
+    to: el('div', { class: 'term-handle to', hidden: true }),
+  };
+  box.append(bar, handles.from, handles.to);
 
   function cell() {
     const r = term.element.querySelector('.xterm-screen').getBoundingClientRect();
@@ -37,6 +48,8 @@ export function attachTouch(term, box, { onCopy }) {
     const row = Math.max(0, Math.min(term.rows - 1, Math.floor((y - r.top) / h)));
     return { col, row: term.buffer.active.viewportY + row };
   }
+
+  const index = (p) => p.row * term.cols + p.col;
 
   function scrollBy(px) {
     acc += px;
@@ -66,40 +79,70 @@ export function attachTouch(term, box, { onCopy }) {
     fling = requestAnimationFrame(step);
   }
 
-  function selectRange(a, b) {
-    const ia = a.row * term.cols + a.col;
-    const ib = b.row * term.cols + b.col;
-    const s = Math.min(ia, ib);
-    term.select(s % term.cols, Math.floor(s / term.cols), Math.abs(ib - ia) + 1);
+  // Chọn từ ô a tới ô b (không cần theo thứ tự).
+  function setSelection(a, b) {
+    const [from, to] = index(a) <= index(b) ? [a, b] : [b, a];
+    sel = { from, to };
+    term.select(from.col, from.row, index(to) - index(from) + 1);
+    placeHandles();
   }
 
   // Nhấn giữ: chọn cả chữ (chuỗi không có khoảng trắng) ở chỗ chạm.
-  function selectWord({ col, row }) {
+  function wordAt({ col, row }) {
     const text = term.buffer.active.getLine(row)?.translateToString(false) || '';
-    if (!text[col]?.trim()) return { anchor: { col, row }, from: { col, row }, to: { col, row } };
+    if (!text[col]?.trim()) return { from: { col, row }, to: { col, row } };
     let a = col;
     let b = col;
     while (a > 0 && text[a - 1].trim()) a--;
     while (b < text.length - 1 && text[b + 1].trim()) b++;
-    return { anchor: { col: a, row }, from: { col: a, row }, to: { col: b, row } };
+    return { from: { col: a, row }, to: { col: b, row } };
   }
 
   function beginSelect() {
     holdTimer = null;
-    const word = selectWord(at(start.x, start.y));
-    selecting = word;
-    selectRange(word.from, word.to);
+    mode = 'select';
+    anchor = wordAt(at(start.x, start.y));
+    setSelection(anchor.from, anchor.to);
     navigator.vibrate?.(15);
-    showBar(false);
+    showTools(false);
   }
 
-  function showBar(on) {
+  // Tay kéo nằm ngay dưới ô đầu (bên trái) và ô cuối (bên phải) của vùng chọn; cuộn khuất thì ẩn.
+  function placeHandles() {
+    const show = !!sel && mode !== 'select';
+    for (const end of ['from', 'to']) {
+      const h = handles[end];
+      const p = sel?.[end];
+      const vrow = p ? p.row - term.buffer.active.viewportY : -1;
+      if (!show || vrow < 0 || vrow >= term.rows) {
+        h.hidden = true;
+        continue;
+      }
+      const { r, w, h: ch } = cell();
+      const b = box.getBoundingClientRect();
+      const left = r.left - b.left + (end === 'from' ? p.col : p.col + 1) * w;
+      h.hidden = false;
+      // Tay đầu ở sát mép trái thì lật sang phải, không thì bị khuất ngoài màn hình.
+      h.classList.toggle('flip', end === 'from' && left < 22);
+      h.style.left = `${left}px`;
+      h.style.top = `${r.top - b.top + (vrow + 1) * ch}px`;
+    }
+  }
+
+  function showTools(on) {
     bar.hidden = !on;
+    placeHandles();
   }
 
   function clearSelection() {
+    sel = null;
     term.clearSelection();
-    showBar(false);
+    showTools(false);
+  }
+
+  function selectAll() {
+    const last = term.buffer.active.length - 1;
+    setSelection({ col: 0, row: 0 }, { col: term.cols - 1, row: last });
   }
 
   async function copy() {
@@ -108,48 +151,87 @@ export function attachTouch(term, box, { onCopy }) {
     clearSelection();
   }
 
+  term.onScroll(() => placeHandles());
+  term.onRender(() => sel && placeHandles());
+  term.onResize(() => clearSelection());
+  // xterm tự bỏ chọn (vd nội dung dưới vùng chọn đổi) thì ẩn luôn tay kéo và thanh Copy.
+  term.onSelectionChange(() => {
+    if (!term.hasSelection() && sel) {
+      sel = null;
+      showTools(false);
+    }
+  });
+
+  // Kéo sát mép trên/dưới thì cuộn tiếp để chọn dài hơn một màn hình.
+  function edgeScroll(y) {
+    const { r, h } = cell();
+    if (y < r.top + h) term.scrollLines(-1);
+    else if (y > r.bottom - h) term.scrollLines(1);
+  }
+
   box.addEventListener('touchstart', (e) => {
     if (bar.contains(e.target)) return;
     e.stopPropagation();
     stopFling();
+    clearTimeout(holdTimer);
+    holdTimer = null;
     if (e.touches.length !== 1) {
-      clearTimeout(holdTimer);
+      mode = null;
       start = null;
       return;
     }
     const t = e.touches[0];
     start = { x: t.clientX, y: t.clientY };
+    const end = e.target === handles.from ? 'from' : e.target === handles.to ? 'to' : null;
+    if (end && sel) {
+      // Nắm tay kéo: nhớ lệch giữa ngón tay và ô, để ô không nhảy lên chỗ ngón tay che.
+      e.preventDefault();
+      mode = 'handle';
+      dragging = end;
+      const { r, w, h } = cell();
+      const p = sel[end];
+      grab = {
+        dx: t.clientX - (r.left + (p.col + 0.5) * w),
+        dy: t.clientY - (r.top + (p.row - term.buffer.active.viewportY + 0.5) * h),
+      };
+      return;
+    }
+    mode = 'pending';
     lastY = t.clientY;
     acc = 0;
-    scrolled = false;
     samples = [{ y: t.clientY, t: e.timeStamp }];
-    if (term.hasSelection()) clearSelection();
+    if (sel) clearSelection();
     holdTimer = setTimeout(beginSelect, HOLD_MS);
-  }, { capture: true, passive: true });
+  }, { capture: true, passive: false });
 
   box.addEventListener('touchmove', (e) => {
     if (!start || bar.contains(e.target)) return;
     e.stopPropagation();
+    e.preventDefault();
     const t = e.touches[0];
-    if (selecting) {
-      e.preventDefault();
-      // Kéo sát mép trên/dưới thì cuộn tiếp để chọn dài hơn một màn hình.
-      const { r, h } = cell();
-      if (t.clientY < r.top + h) term.scrollLines(-1);
-      else if (t.clientY > r.bottom - h) term.scrollLines(1);
-      const p = at(t.clientX, t.clientY);
-      const { anchor, to } = selecting;
-      const ia = anchor.row * term.cols + anchor.col;
-      const ip = p.row * term.cols + p.col;
-      if (ip >= ia) selectRange(anchor, ip > to.row * term.cols + to.col ? p : to);
-      else selectRange(p, to);
+    if (mode === 'handle') {
+      edgeScroll(t.clientY);
+      const p = at(t.clientX - grab.dx, t.clientY - grab.dy);
+      const other = dragging === 'from' ? sel.to : sel.from;
+      setSelection(p, other);
+      // Kéo tay đầu vượt qua tay cuối (hoặc ngược lại) thì đổi vai.
+      dragging = index(p) <= index(other) ? 'from' : 'to';
       return;
     }
-    if (!scrolled && Math.hypot(t.clientX - start.x, t.clientY - start.y) < SLOP) return;
-    clearTimeout(holdTimer);
-    holdTimer = null;
-    scrolled = true;
-    e.preventDefault();
+    if (mode === 'select') {
+      edgeScroll(t.clientY);
+      const p = at(t.clientX, t.clientY);
+      if (index(p) >= index(anchor.from)) setSelection(anchor.from, index(p) > index(anchor.to) ? p : anchor.to);
+      else setSelection(p, anchor.to);
+      return;
+    }
+    if (mode === 'pending') {
+      if (Math.hypot(t.clientX - start.x, t.clientY - start.y) < SLOP) return;
+      clearTimeout(holdTimer);
+      holdTimer = null;
+      mode = 'scroll';
+    }
+    if (mode !== 'scroll') return;
     scrollBy(lastY - t.clientY);
     lastY = t.clientY;
     samples.push({ y: t.clientY, t: e.timeStamp });
@@ -161,18 +243,22 @@ export function attachTouch(term, box, { onCopy }) {
     e.stopPropagation();
     clearTimeout(holdTimer);
     holdTimer = null;
-    if (selecting) {
+    const was = mode;
+    mode = null;
+    start = null;
+    dragging = null;
+    if (was === 'select' || was === 'handle') {
       e.preventDefault(); // không để chạm này thành click (bật bàn phím, bỏ chọn)
-      selecting = null;
-      if (term.hasSelection()) showBar(true);
-    } else if (scrolled) {
+      if (term.hasSelection()) showTools(true);
+      else clearSelection();
+    } else if (was === 'scroll') {
       e.preventDefault();
       const first = samples[0];
       const last = samples[samples.length - 1];
       const dt = last.t - first.t;
       if (dt > 0 && e.timeStamp - last.t < 80) startFling((first.y - last.y) / dt);
     }
-    start = null;
+    // 'pending' (chạm nhẹ) thì để thành click như bình thường: focus terminal, bật bàn phím.
   };
   box.addEventListener('touchend', end, { capture: true, passive: false });
   box.addEventListener('touchcancel', end, { capture: true, passive: false });

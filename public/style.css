@@ -299,6 +299,14 @@ dialog .job { margin: 0; }
 .term { position: absolute; inset: 0; padding: 4px 0 0 6px; display: none; }
 .term.visible { display: block; }
 .term { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+/* Cảm ứng do touchterm.js lo hết; để trình duyệt tự cuộn thì nó tranh với cuộn ở đó, lúc được lúc không. */
+.term, .term * { touch-action: none; }
+.term-handle { position: absolute; z-index: 4; width: 22px; height: 22px; margin-left: -11px; background: var(--accent); }
+.term-handle.from { border-radius: 50% 0 50% 50%; margin-left: -22px; }
+.term-handle.to, .term-handle.from.flip { border-radius: 0 50% 50% 50%; margin-left: 0; }
+.term-handle[hidden] { display: none; }
+/* Vùng chạm lớn hơn hình để dễ nắm. */
+.term-handle::before { content: ''; position: absolute; inset: -12px; }
 .term-selbar { position: absolute; top: 8px; right: 8px; z-index: 5; display: flex; gap: 6px; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-2); box-shadow: 0 4px 14px rgba(0, 0, 0, .4); }
 .term-selbar[hidden] { display: none; }
 .term-selbar button { min-width: 44px; min-height: 36px; padding: 0 12px; }
