@@ -75,6 +75,10 @@ async function status(project) {
     info.changes = info.changes.slice(0, 1000);
   }
   info.remote = (await git(dir, ['remote', 'get-url', 'origin']).catch(() => '')).trim() || null;
+  info.merging = fs.existsSync(path.join(dir, '.git', 'MERGE_HEAD'));
+  // Claude xử lý xong (merge đã commit hoặc đã hủy) thì tự mở khóa.
+  if (locks.get(project)?.kind === 'conflict' && !info.merging && !info.changes.some((c) => c.conflict)) locks.delete(project);
+  info.lock = locks.get(project) || null;
   return info;
 }
 
@@ -205,6 +209,7 @@ async function checkBranchName(dir, name) {
 
 // Chuyển sang nhánh có sẵn, nhánh remote (tạo nhánh local theo dõi nó) hoặc tạo nhánh mới từ HEAD.
 async function checkout(project, { branch, create }) {
+  checkUnlocked(project);
   const dir = repoDir(project);
   const name = await checkBranchName(dir, typeof branch === 'string' ? branch.trim() : branch);
   if (create) return git(dir, ['switch', '-c', name]);
@@ -220,6 +225,7 @@ async function checkout(project, { branch, create }) {
 
 async function commitAll(project, message) {
   if (typeof message !== 'string' || !message.trim() || message.length > 5000) throw httpError(400, 'Cần nội dung commit');
+  checkUnlocked(project);
   const dir = repoDir(project);
   await git(dir, ['add', '-A']);
   return git(dir, ['commit', '-m', message.trim()]);
@@ -245,7 +251,30 @@ function busy(project) {
   return false;
 }
 
-function startJob(project, kind, cwd, args) {
+// ---------- Khóa dự án khi tự đồng bộ đang pull hoặc Claude đang xử lý xung đột merge ----------
+// project -> { kind: 'pull' | 'conflict', session?, since }. Chỉ nằm trong bộ nhớ: restart server thì mất khóa,
+// nhưng status vẫn báo merging nên web vẫn biết còn xung đột.
+
+const locks = new Map();
+
+function lockProject(project, kind, extra = {}) {
+  const lock = { kind, since: Date.now(), ...extra };
+  locks.set(project, lock);
+  return lock;
+}
+
+function unlockProject(project) {
+  const lock = locks.get(project);
+  locks.delete(project);
+  return lock || null;
+}
+
+function checkUnlocked(project) {
+  const lock = locks.get(project);
+  if (lock) throw httpError(423, lock.kind === 'pull' ? 'Dự án đang tự pull, chờ chút' : 'Dự án đang khóa: Claude đang xử lý xung đột merge');
+}
+
+function startJob(project, kind, cwd, args, onDone) {
   if (busy(project)) throw httpError(409, 'Dự án đang chạy một lệnh git khác');
   pruneJobs();
   const job = { id: crypto.randomBytes(8).toString('hex'), project, kind, status: 'running', output: '', started: Date.now(), ended: null };
@@ -265,6 +294,7 @@ function startJob(project, kind, cwd, args) {
     if (job.ended) return;
     job.status = ok ? 'ok' : 'error';
     job.ended = Date.now();
+    onDone?.(job);
   };
   child.on('error', (err) => {
     append(String(err.message));
@@ -293,6 +323,17 @@ function clone(name, url) {
 
 async function remoteOp(project, op) {
   const dir = repoDir(project);
+  if (op === 'fetch') checkLockedPull(project);
+  else checkUnlocked(project);
+  // Tự đồng bộ: pull kiểu merge (không chỉ fast-forward) để thấy được xung đột, khóa dự án tới khi pull xong.
+  // Xung đột thì merge dừng lại, web giao cho Claude xử lý (resolve) và khóa tiếp.
+  if (op === 'sync') {
+    const job = startJob(project, op, dir, ['pull', '--no-rebase', '--no-edit', '--progress'], () => {
+      if (locks.get(project)?.kind === 'pull') unlockProject(project);
+    });
+    lockProject(project, 'pull');
+    return job;
+  }
   if (op === 'fetch') return startJob(project, op, dir, ['fetch', '--all', '--prune', '--progress']);
   if (op === 'pull') return startJob(project, op, dir, ['pull', '--ff-only', '--progress']);
   if (op === 'push') {
@@ -301,6 +342,17 @@ async function remoteOp(project, op) {
     return startJob(project, op, dir, hasUpstream ? ['push', '--progress'] : ['push', '--progress', '-u', 'origin', 'HEAD']);
   }
   throw httpError(400, 'Lệnh không hợp lệ');
+}
+
+// Fetch không đụng file làm việc: được chạy cả khi đang xử lý xung đột, chỉ chặn lúc đang pull.
+function checkLockedPull(project) {
+  if (locks.get(project)?.kind === 'pull') checkUnlocked(project);
+}
+
+// Danh sách file đang xung đột, để viết prompt cho Claude.
+async function conflictFiles(project) {
+  const out = await git(repoDir(project), ['diff', '--name-only', '--diff-filter=U', '-z']);
+  return out.split('\0').filter(Boolean);
 }
 
 // Đổi (hoặc thêm) remote origin.
@@ -312,21 +364,37 @@ async function setRemote(project, url) {
   return { remote: url.trim() };
 }
 
-// ---------- Cấu hình chung: tên/email commit (SSH key theo tài khoản nằm ở gitaccounts.js) ----------
+// ---------- Cấu hình chung: tên/email commit, mặc định tự đồng bộ (SSH key theo tài khoản nằm ở gitaccounts.js) ----------
+
+const SETTINGS_FILE = path.join(__dirname, '..', 'data', 'git-settings.json');
+
+function loadSettings() {
+  try {
+    return { autoSync: false, ...JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) };
+  } catch {
+    return { autoSync: false };
+  }
+}
+
+function saveSettings(settings) {
+  fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2), { mode: 0o600 });
+}
 
 async function getConfig() {
   const home = os.homedir();
   const read = (key) => git(home, ['config', '--global', '--get', key]).then((s) => s.trim(), () => '');
-  return { name: await read('user.name'), email: await read('user.email') };
+  return { name: await read('user.name'), email: await read('user.email'), autoSync: loadSettings().autoSync === true };
 }
 
-async function setConfig({ name, email }) {
+async function setConfig({ name, email, autoSync }) {
   const ok = (v) => typeof v === 'string' && v.trim() && v.length <= 200 && !/[\r\n\0]/.test(v);
   if (!ok(name) || !ok(email)) throw httpError(400, 'Cần tên và email hợp lệ');
   const home = os.homedir();
   await git(home, ['config', '--global', 'user.name', name.trim()]);
   await git(home, ['config', '--global', 'user.email', email.trim()]);
+  if (typeof autoSync === 'boolean') saveSettings({ ...loadSettings(), autoSync });
   return getConfig();
 }
 
-module.exports = { status, log, show, diff, commitFiles, commitDiff, fileAt, rawAt, branches, checkout, commitAll, init, clone, remoteOp, setRemote, getJob, getConfig, setConfig };
+module.exports = { status, log, show, diff, commitFiles, commitDiff, fileAt, rawAt, branches, checkout, commitAll, init, clone, remoteOp, setRemote, getJob, getConfig, setConfig, lockProject, unlockProject, conflictFiles };

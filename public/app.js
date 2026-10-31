@@ -9,7 +9,7 @@ import { initPreview, setPreviewProject, openPreview, togglePreview } from './pr
 import { initSketch, openSketch } from './sketch.js';
 import { initSlash } from './slash.js';
 import { renderAnsi } from './ansi.js';
-import { initGit, setGitProject, load as loadGit } from './gitpanel.js';
+import { initGit, setGitProject, setAutoSyncDefault, load as loadGit } from './gitpanel.js';
 import { openBrowser } from './browserview.js';
 import { accounts as gitAccounts, checkAccount, aliasUrl, urlHost, fillAccountSelect, whoText, renderAccounts, initGitAccounts } from './gitaccounts.js';
 
@@ -336,6 +336,7 @@ async function openGitSettings() {
 function renderGitSettings(cfg) {
   gitForm.name.value = cfg.name;
   gitForm.email.value = cfg.email;
+  gitForm.autoSync.checked = cfg.autoSync;
   renderAccounts();
 }
 
@@ -345,7 +346,8 @@ gitForm.addEventListener('submit', async (e) => {
   if (e.submitter?.value !== 'ok') return;
   e.preventDefault();
   try {
-    await api('POST', '/api/git/config', { name: gitForm.name.value, email: gitForm.email.value });
+    const cfg = await api('POST', '/api/git/config', { name: gitForm.name.value, email: gitForm.email.value, autoSync: gitForm.autoSync.checked });
+    setAutoSyncDefault(cfg.autoSync);
     dlgGit.close();
     toast('Đã lưu cài đặt git');
   } catch (err) {
@@ -1298,6 +1300,14 @@ initSlash({
     return project && s && s.kind !== 'shell' ? { project, alias: s.alias } : null;
   },
 });
-initGit();
+// Pull bị xung đột: thanh khóa dự án có nút mở phiên Claude đang xử lý.
+initGit({
+  openSession: async (name) => {
+    await refreshSessions();
+    if (!sessions.some((s) => s.name === name)) return toast('Phiên xử lý xung đột đã tắt', 'error');
+    if (isNarrow()) toggleSidebar(false);
+    openTab(name);
+  },
+});
 fitViewport();
 route();
