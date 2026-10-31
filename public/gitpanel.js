@@ -8,6 +8,7 @@ const infoEl = $('#git-info');
 const changesEl = $('#git-changes');
 const logEl = $('#git-log');
 const jobEl = $('#git-job');
+const jobBox = $('#git-job-box'); // khung log fetch/pull/push, có nút ✕ để ẩn
 const repoEl = $('#git-repo');
 const noRepoEl = $('#git-norepo');
 const commitForm = $('#git-commit-form');
@@ -66,6 +67,7 @@ export function initGit(opts = {}) {
     fetchStatus();
   });
   $('#git-refresh').addEventListener('click', () => load());
+  $('#git-job-close').addEventListener('click', () => { jobBox.hidden = true; });
   document.querySelectorAll('[data-git]').forEach((btn) => btn.addEventListener('click', () => runRemote(btn.dataset.git)));
   document.querySelectorAll('[data-gitview]').forEach((btn) => btn.addEventListener('click', () => setView(btn.dataset.gitview)));
   $('#git-commit-back').addEventListener('click', () => setView('log'));
@@ -137,7 +139,7 @@ export async function setGitProject(name) {
   lockFull = true;
   renderLock(null);
   project = name;
-  jobEl.hidden = true;
+  jobBox.hidden = true;
   infoEl.replaceChildren();
   changesEl.replaceChildren();
   logEl.replaceChildren();
@@ -469,6 +471,7 @@ async function runRemote(op) {
   setRunning(true);
   try {
     const { job } = await api('POST', projectUrl(project, `/git/${op}`));
+    jobBox.hidden = false;
     const done = await followJob(job, jobEl);
     toast(done.status === 'ok' ? `git ${op} xong` : `git ${op} lỗi, xem chi tiết bên dưới`, done.status === 'ok' ? '' : 'error');
     if (op === 'push' && done.status === 'ok') pushTried = null;
@@ -488,7 +491,7 @@ async function quietJob(op) {
     const { job } = await api('POST', projectUrl(current, `/git/${op}`));
     const done = await followJob(job, null);
     if (done.status !== 'ok' && current === project) {
-      jobEl.hidden = false;
+      jobBox.hidden = false;
       const cmd = op === 'sync' ? 'pull' : op;
       jobEl.textContent = `$ git ${cmd} (tự đồng bộ)\n${done.output.trim()}`;
       if (!(op === 'sync' && /CONFLICT|conflict/.test(done.output))) toast(`Tự đồng bộ: git ${cmd} lỗi`, 'error');
