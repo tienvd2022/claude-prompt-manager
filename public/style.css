@@ -698,3 +698,7 @@ body.preview-open .stage > .empty { display: none; }
 .sc-json { margin-top: 10px; }
 .sc-json textarea { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 12px; margin: 6px 0; }
 .project-card:focus-visible, .sidebar li button:focus-visible, .sidebar li a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Nút xuống cuối terminal */
+.term-jump { position: absolute; right: 14px; bottom: 14px; z-index: 5; padding: 6px 12px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--accent); color: var(--text); font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.4); touch-action: manipulation; }
+.term-jump[hidden] { display: none; }

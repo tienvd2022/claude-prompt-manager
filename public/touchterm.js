@@ -170,7 +170,7 @@ export function attachTouch(term, box, { onCopy }) {
   }
 
   box.addEventListener('touchstart', (e) => {
-    if (bar.contains(e.target)) return;
+    if ((bar.contains(e.target) || e.target.closest?.('.term-jump'))) return;
     e.stopPropagation();
     stopFling();
     clearTimeout(holdTimer);
@@ -205,7 +205,7 @@ export function attachTouch(term, box, { onCopy }) {
   }, { capture: true, passive: false });
 
   box.addEventListener('touchmove', (e) => {
-    if (!start || bar.contains(e.target)) return;
+    if (!start || (bar.contains(e.target) || e.target.closest?.('.term-jump'))) return;
     e.stopPropagation();
     e.preventDefault();
     const t = e.touches[0];
@@ -239,7 +239,7 @@ export function attachTouch(term, box, { onCopy }) {
   }, { capture: true, passive: false });
 
   const end = (e) => {
-    if (!start || bar.contains(e.target)) return;
+    if (!start || (bar.contains(e.target) || e.target.closest?.('.term-jump'))) return;
     e.stopPropagation();
     clearTimeout(holdTimer);
     holdTimer = null;
