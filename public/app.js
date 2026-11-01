@@ -88,8 +88,33 @@ function renderProjects() {
       el('span', { class: 'project-name', text: p.name }),
       el('span', { class: 'project-meta' }, p.git ? el('span', { class: 'ico ico-branch' }) : null, meta),
       p.linked ? el('span', { class: 'project-path', text: p.path }) : null,
-      p.sessions ? el('span', { class: 'dot', title: 'Có phiên đang chạy' }) : null)));
+      p.sessions ? el('span', { class: 'dot', title: 'Có phiên đang chạy' }) : null,
+      p.linked ? null : el('button', { type: 'button', class: 'icon-btn small project-rename', title: 'Đổi tên dự án', 'aria-label': `Đổi tên ${p.name}`, text: '✎', onclick: (e) => renameProject(e, p) }))));
   }
+}
+
+// Đổi tên thư mục dự án. Chỉ được khi không còn phiên chạy (phiên tmux giữ đường dẫn cũ).
+async function renameProject(e, p) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (p.sessions) return toast(`"${p.name}" còn ${p.sessions} phiên đang chạy, kết thúc phiên trước khi đổi tên`, 'error');
+  const newName = await inputDialog(`Đổi tên dự án "${p.name}"`, p.name, 'Đổi tên');
+  if (!newName || newName === p.name) return;
+  try {
+    const res = await api('POST', `/api/projects/${encodeURIComponent(p.name)}/rename-project`, { name: newName });
+    const recent = store.get('cpm.recent', {});
+    if (recent[p.name]) {
+      recent[res.name] = recent[p.name];
+      delete recent[p.name];
+      store.set('cpm.recent', recent);
+    }
+    store.remove(`cpm.tabs.${p.name}`);
+    store.remove(`cpm.active.${p.name}`);
+    toast(`Đã đổi tên thành "${res.name}"`);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+  showProjects();
 }
 
 $('#project-filter').addEventListener('input', renderProjects);

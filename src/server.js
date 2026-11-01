@@ -237,6 +237,11 @@ route('DELETE', '/api/projects/:p/link', async (req, res, p) => {
   projects.unlink(p);
   sendJson(res, 200, { ok: true });
 });
+route('POST', '/api/projects/:p/rename-project', async (req, res, p) => {
+  // Phiên tmux đang chạy giữ cwd và tên dự án cũ, nên phải kết thúc hết trước khi đổi tên.
+  if ((await tmux.list()).some((s) => s.project === p)) throw projects.httpError(409, 'Dự án còn phiên đang chạy, kết thúc phiên trước khi đổi tên');
+  sendJson(res, 200, projects.rename(p, (await readJson(req)).name));
+});
 route('GET', '/api/sessions', async (req, res) => sendJson(res, 200, { sessions: await tmux.list() }));
 route('DELETE', '/api/sessions/:name', async (req, res, name) => {
   if (!tmux.validName(name)) return sendJson(res, 400, { error: 'Tên phiên không hợp lệ' });
