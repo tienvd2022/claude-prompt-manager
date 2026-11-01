@@ -75,8 +75,9 @@
           <div id="panel-files" class="panel" hidden>
             <div class="panel-toolbar">
               <button id="files-up" title="Lên thư mục cha" aria-label="Lên thư mục cha">↑</button>
-              <button id="files-mkdir">＋ Thư mục</button>
-              <button id="files-upload">⇪ Upload</button>
+              <button id="files-mkdir" title="Thư mục mới" aria-label="Thư mục mới">＋📁<span class="lbl"> Thư mục</span></button>
+              <button id="files-upload" title="Upload file" aria-label="Upload file">⇪<span class="lbl"> Upload</span></button>
+              <button id="files-dl-project" title="Tải cả dự án về (.zip hoặc .tar.gz)" aria-label="Tải cả dự án về">⇩<span class="lbl"> Tải</span></button>
               <span class="grow"></span>
               <button id="files-refresh" class="icon-btn small" title="Làm mới" aria-label="Làm mới">↻</button>
               <input id="files-input" name="files" type="file" multiple hidden>
@@ -348,6 +349,23 @@
         <button value="delete" class="danger-btn">Xóa</button>
       </div>
       <div class="dlg-actions"><button value="cancel">Đóng</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="dlg-dlproject">
+    <form method="dialog" id="dlproject-form">
+      <h2>Tải cả dự án</h2>
+      <div class="seg" role="radiogroup" aria-label="Định dạng">
+        <label><input type="radio" name="format" value="zip" checked> .zip</label>
+        <label><input type="radio" name="format" value="tar"> .tar.gz</label>
+      </div>
+      <label class="inline"><input type="checkbox" name="skip" checked> Bỏ qua node_modules, .venv, __pycache__, .DS_Store, .cpm</label>
+      <label class="inline"><input type="checkbox" name="git"> Kèm thư mục .git (lịch sử commit)</label>
+      <p class="muted small">Server nén ngay lúc tải nên không biết trước dung lượng, dự án lớn thì chờ một lúc.</p>
+      <div class="dlg-actions">
+        <button value="cancel">Hủy</button>
+        <button value="ok" class="primary-btn">⇩ Tải về</button>
+      </div>
     </form>
   </dialog>
 

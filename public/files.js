@@ -1,6 +1,6 @@
 // Panel quản lý file của dự án: duyệt thư mục, xem/sửa file, upload, tải về, đổi tên, xóa.
 
-import { $, el, api, projectUrl, formatSize, timeAgo, toast, confirmDialog, inputDialog, nativeApp } from './common.js';
+import { $, el, api, projectUrl, formatSize, timeAgo, toast, confirmDialog, inputDialog, nativeApp, store } from './common.js';
 import { openViewer } from './viewer.js';
 
 const LONG_PRESS_MS = 500;
@@ -25,6 +25,23 @@ export function initFiles({ insertPath, openPreview }) {
   $('#files-refresh').addEventListener('click', () => load(cwd));
   $('#files-mkdir').addEventListener('click', makeDir);
   $('#files-upload').addEventListener('click', () => fileInput.click());
+  // Tải cả dự án: chọn định dạng, bỏ rác, kèm .git hay không (lưu lựa chọn cho lần sau).
+  const dlDlg = $('#dlg-dlproject');
+  const dlForm = $('#dlproject-form');
+  $('#files-dl-project').addEventListener('click', () => {
+    const saved = store.get('cpm.dlProject', {});
+    dlForm.format.value = saved.format || 'zip';
+    dlForm.skip.checked = saved.skip !== false;
+    dlForm.git.checked = !!saved.git;
+    dlDlg.returnValue = '';
+    dlDlg.showModal();
+  });
+  dlDlg.addEventListener('close', () => {
+    if (dlDlg.returnValue !== 'ok') return;
+    const choice = { format: dlForm.format.value, skip: dlForm.skip.checked, git: dlForm.git.checked };
+    store.set('cpm.dlProject', choice);
+    download('', true, { format: choice.format, skip: choice.skip ? '1' : '0', git: choice.git ? '1' : '0' });
+  });
   fileInput.addEventListener('change', () => {
     uploadAll([...fileInput.files]);
     fileInput.value = '';
@@ -146,7 +163,7 @@ function entryActions(entry, rel) {
   const isDir = entry.type === 'dir';
   $('h2', dlg).textContent = entry.name;
   $('#entry-meta', dlg).textContent = isDir ? `Thư mục · ${rel}` : `${formatSize(entry.size)} · sửa ${timeAgo(entry.mtime)} · ${rel}`;
-  $('#entry-download', dlg).textContent = isDir ? 'Tải về (.tar.gz)' : 'Tải về';
+  $('#entry-download', dlg).textContent = isDir ? 'Tải về (.zip)' : 'Tải về';
   $('#entry-preview', dlg).hidden = isDir || !/\.(html?|svg)$/i.test(rel);
   dlg.returnValue = '';
   dlg.showModal();
@@ -160,20 +177,23 @@ function entryActions(entry, rel) {
   }, { once: true });
 }
 
-export async function download(rel, isDir = false) {
+// opts (chỉ cho thư mục): { format: 'zip'|'tar', skip: '1' bỏ rác, git: '0' bỏ .git }.
+export async function download(rel, isDir = false, opts = {}) {
+  const ext = opts.format === 'tar' ? 'tar.gz' : 'zip';
   if (nativeApp) {
     // WebView không tự tải file: xin link tải dùng một lần rồi để app native tải, lưu/chia sẻ.
     try {
-      const { url } = await api('POST', projectUrl(project, '/download-ticket'), { path: rel });
+      const { url } = await api('POST', projectUrl(project, '/download-ticket'), { path: rel, ...opts });
       const name = rel.split('/').pop() || project;
-      nativeApp.post({ type: 'download', url: new URL(url, location.href).href, name: isDir ? `${name}.tar.gz` : name });
+      nativeApp.post({ type: 'download', url: new URL(url, location.href).href, name: isDir ? `${name}.${ext}` : name });
     } catch (err) {
       toast(err.message, 'error');
     }
     return;
   }
   // Trình duyệt tự gửi cookie đăng nhập; link tạm để tải không làm mất trang.
-  const a = el('a', { href: projectUrl(project, `/download?path=${encodeURIComponent(rel)}`), download: '' });
+  const qs = new URLSearchParams({ path: rel, ...opts });
+  const a = el('a', { href: projectUrl(project, `/download?${qs}`), download: '' });
   document.body.append(a);
   a.click();
   a.remove();
