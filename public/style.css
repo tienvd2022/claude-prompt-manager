@@ -105,6 +105,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 }
 
 .topbar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -672,3 +673,28 @@ body.preview-open .stage > .empty { display: none; }
 @keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
 @media (prefers-reduced-motion: reduce) { dialog:modal { animation: none; } }
 
+
+/* Chuyển nhanh dự án đang chạy */
+#btn-projswitch { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+#btn-projswitch .dot { grid-column: auto; grid-row: auto; }
+#btn-projswitch .ps-caret { font-size: 12px; }
+.projswitch-menu { position: absolute; top: 100%; left: 40px; z-index: 50; margin: 4px 0 0; padding: 4px; list-style: none; min-width: 220px; max-width: calc(100vw - 16px); max-height: 60vh; overflow: auto; background: var(--panel, var(--bg)); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.35); }
+.projswitch-menu[hidden] { display: none; }
+.projswitch-menu button { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 8px 10px; border-color: transparent; background: transparent; }
+.projswitch-menu button .ellipsis { flex: 1; min-width: 0; }
+.projswitch-menu button.active { background: var(--border); }
+.projswitch-menu .dot { flex: none; }
+
+/* Phím tắt */
+.dlg-shortcuts .sc-list h3 { margin: 14px 0 4px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.sc-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(130px, auto) auto; gap: 8px; align-items: center; padding: 3px 0; }
+.sc-row .sc-label { font-size: 14px; overflow-wrap: anywhere; }
+.sc-key { font-family: ui-monospace, Menlo, monospace; font-size: 13px; min-width: 130px; text-align: center; }
+.sc-key.custom { border-color: var(--accent); }
+.sc-key.recording { outline: 2px solid var(--accent); background: var(--panel-2); font-family: inherit; }
+.sc-row.conflict .sc-key { border-color: #e5484d; }
+.sc-row.conflict .sc-label::after { content: ' · trùng phím'; color: #e5484d; font-size: 12px; }
+.dlg-shortcuts .sc-list { max-height: 55vh; overflow-y: auto; }
+.sc-json { margin-top: 10px; }
+.sc-json textarea { width: 100%; font-family: ui-monospace, Menlo, monospace; font-size: 12px; margin: 6px 0; }
+.project-card:focus-visible, .sidebar li button:focus-visible, .sidebar li a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }

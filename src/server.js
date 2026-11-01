@@ -24,6 +24,7 @@ const gitAccounts = require('./gitaccounts');
 const projects = require('./projects');
 const queue = require('./queue');
 const stats = require('./stats');
+const settings = require('./settings');
 const tmux = require('./tmux');
 const { unwrap } = require('./unwrap');
 
@@ -236,6 +237,8 @@ route('POST', '/api/projects', async (req, res) => {
 // Tạo dự án từ file .zip (body thô là nội dung zip).
 route('POST', '/api/projects/import-zip', async (req, res, url) => sendJson(res, 201, await files.importZip(req, url.searchParams.get('name'))));
 
+route('GET', '/api/settings', async (req, res) => sendJson(res, 200, settings.get()));
+route('PUT', '/api/settings', async (req, res) => sendJson(res, 200, settings.set(await readJson(req))));
 route('GET', '/api/stats', async (req, res) => sendJson(res, 200, await stats.get()));
 
 route('GET', '/api/browse', async (req, res, url) => sendJson(res, 200, await projects.browse(url.searchParams.get('path'), { hidden: url.searchParams.get('hidden') === '1' })));
