@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const { DATA_DIR } = require('./paths');
 const AUTH_FILE = path.join(DATA_DIR, 'auth.json');
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 

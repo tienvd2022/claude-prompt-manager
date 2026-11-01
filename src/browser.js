@@ -14,7 +14,7 @@ const WebSocket = require('ws');
 const tmux = require('./tmux');
 
 const ENABLED = process.env.CPM_BROWSER !== '0';
-const DIR = path.join(__dirname, '..', 'data', 'browser');
+const DIR = path.join(require('./paths').DATA_DIR, 'browser');
 const MCP_PACKAGE = process.env.CPM_PLAYWRIGHT_MCP || '@playwright/mcp@latest';
 const START_TIMEOUT_MS = 20000;
 const SWEEP_MS = 30000;

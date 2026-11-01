@@ -7,3 +7,4 @@ data/
 
 # Transcript phiên Claude (session-sync), có thể chứa thông tin nhạy cảm
 .claude/sessions/
+dist/

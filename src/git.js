@@ -366,7 +366,7 @@ async function setRemote(project, url) {
 
 // ---------- Cấu hình chung: tên/email commit, mặc định tự đồng bộ (SSH key theo tài khoản nằm ở gitaccounts.js) ----------
 
-const SETTINGS_FILE = path.join(__dirname, '..', 'data', 'git-settings.json');
+const SETTINGS_FILE = path.join(require('./paths').DATA_DIR, 'git-settings.json');
 
 function loadSettings() {
   try {
