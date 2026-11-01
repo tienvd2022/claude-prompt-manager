@@ -76,7 +76,7 @@ function renderProjects() {
   const recent = store.get('cpm.recent', {});
   const items = projectList
     .filter((p) => !q || p.name.toLowerCase().includes(q) || p.path?.toLowerCase().includes(q))
-    .sort((a, b) => (recent[b.name] || 0) - (recent[a.name] || 0) || a.name.localeCompare(b.name));
+    .sort((a, b) => (b.sessions ? 1 : 0) - (a.sessions ? 1 : 0) || (recent[b.name] || 0) - (recent[a.name] || 0) || a.name.localeCompare(b.name));
   listEl.replaceChildren();
   if (!items.length) {
     listEl.append(el('li', { class: 'muted pad', text: projectList.length ? 'Không có dự án khớp.' : 'Chưa có dự án nào. Bấm "＋ Dự án mới" để tạo hoặc clone.' }));
@@ -136,7 +136,7 @@ async function showRecentFolders() {
   }
   $('#browse-recent').classList.add('active');
   const recent = store.get('cpm.recent', {});
-  items.sort((a, b) => (recent[b.name] || 0) - (recent[a.name] || 0) || a.name.localeCompare(b.name));
+  items.sort((a, b) => (b.sessions ? 1 : 0) - (a.sessions ? 1 : 0) || (recent[b.name] || 0) - (recent[a.name] || 0) || a.name.localeCompare(b.name));
   $('#browse-list').replaceChildren(...(items.length
     ? items.map((p) => el('li', { class: 'browse-row' },
       el('button', { type: 'button', class: 'browse-item', disabled: p.missing, onclick: () => openRecentFolder(p) },
