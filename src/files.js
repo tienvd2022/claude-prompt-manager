@@ -86,8 +86,37 @@ function contentDisposition(name) {
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
 
-// File thì tải thẳng; thư mục thì nén tar.gz ngay khi gửi.
-async function download(res, project, rel) {
+// Nén thư mục thành zip ngay khi gửi (zipfile của python3 ghi thẳng ra stdout, không cần file tạm).
+// Bỏ các thư mục tên nằm trong skip; symlink trỏ ra ngoài thư mục đang tải thì bỏ qua.
+const ZIP_PY = `
+import os, sys, zipfile
+root, base, skip = sys.argv[1], sys.argv[2], set(filter(None, sys.argv[3].split(',')))
+real_root = os.path.realpath(root)
+def inside(p):
+    r = os.path.realpath(p)
+    return r == real_root or r.startswith(real_root + os.sep)
+with zipfile.ZipFile(sys.stdout.buffer, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+    for d, dirs, files in os.walk(root):
+        dirs[:] = sorted(x for x in dirs if x not in skip and not os.path.islink(os.path.join(d, x)))
+        rel = os.path.relpath(d, root)
+        arc = base if rel == '.' else base + '/' + rel.replace(os.sep, '/')
+        if not files and not dirs:
+            z.writestr(arc + '/', '')
+        for f in sorted(files):
+            p = os.path.join(d, f)
+            if f in skip or not os.path.isfile(p) or not inside(p):
+                continue
+            try:
+                z.write(p, arc + '/' + f)
+            except OSError as e:
+                print(e, file=sys.stderr)
+`;
+// Thư mục rác hay rất nặng, bỏ đi khi tải dự án (tùy chọn). .cpm là ảnh dán/preview nội bộ của app.
+const JUNK = ['node_modules', '.venv', '__pycache__', '.DS_Store', '.cpm'];
+
+// File thì tải thẳng; thư mục thì nén zip (mặc định) hoặc tar.gz ngay khi gửi.
+// opts: { format: 'zip'|'tar', skipJunk, git } — git=false thì bỏ thư mục .git.
+async function download(res, project, rel, opts = {}) {
   const { full, rel: clean } = resolve(project, rel);
   const st = await fs.promises.stat(full);
   const name = clean ? path.basename(full) : project;
@@ -101,13 +130,23 @@ async function download(res, project, rel) {
     return;
   }
   if (!st.isDirectory()) throw httpError(400, 'Không tải được loại file này');
+  const skip = [...(opts.skipJunk ? JUNK : []), ...(opts.git === false ? ['.git'] : [])];
+  const tar = opts.format === 'tar';
+  const child = tar
+    ? spawn('tar', ['-czf', '-', ...skip.map((x) => `--exclude=${x}`), '-C', path.dirname(full), '--', path.basename(full)], { stdio: ['ignore', 'pipe', 'ignore'] })
+    : spawn('python3', ['-I', '-c', ZIP_PY, full, name, skip.join(',')], { stdio: ['ignore', 'pipe', 'ignore'] });
+  child.on('error', () => res.destroy());
   res.writeHead(200, {
-    'Content-Type': 'application/gzip',
-    'Content-Disposition': contentDisposition(`${name}.tar.gz`),
+    'Content-Type': tar ? 'application/gzip' : 'application/zip',
+    'Content-Disposition': contentDisposition(`${name}.${tar ? 'tar.gz' : 'zip'}`),
   });
-  const tar = spawn('tar', ['-czf', '-', '-C', path.dirname(full), '--', path.basename(full)], { stdio: ['ignore', 'pipe', 'ignore'] });
-  tar.stdout.pipe(res);
-  res.on('close', () => tar.kill());
+  child.stdout.pipe(res);
+  res.on('close', () => child.kill());
+}
+
+// Đọc tùy chọn tải thư mục từ query/body: format=zip|tar, skip=1 (bỏ rác), git=0 (bỏ .git).
+function downloadOpts(get) {
+  return { format: get('format') === 'tar' ? 'tar' : 'zip', skipJunk: get('skip') === '1', git: get('git') !== '0' };
 }
 
 // Kiểu ảnh xem được ngay trên web (SVG hiển thị qua <img> nên script trong đó không chạy).
@@ -336,4 +375,4 @@ async function remove(project, rel) {
   await fs.promises.rm(full, { recursive: true });
 }
 
-module.exports = { resolve, excludeCpm, receiveTo, importZip, MAX_UPLOAD, MAX_TEXT, imageType, sendImage, image, readText, writeText, listDir, download, upload, savePaste, mkdir, rename, remove };
+module.exports = { resolve, excludeCpm, receiveTo, importZip, MAX_UPLOAD, MAX_TEXT, imageType, sendImage, image, readText, writeText, listDir, download, downloadOpts, upload, savePaste, mkdir, rename, remove };

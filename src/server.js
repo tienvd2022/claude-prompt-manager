@@ -322,7 +322,7 @@ route('POST', '/api/projects/:p/sessions', async (req, res, p) => {
 });
 
 route('GET', '/api/projects/:p/files', async (req, res, p, url) => sendJson(res, 200, await files.listDir(p, url.searchParams.get('path'))));
-route('GET', '/api/projects/:p/download', async (req, res, p, url) => files.download(res, p, url.searchParams.get('path')));
+route('GET', '/api/projects/:p/download', async (req, res, p, url) => files.download(res, p, url.searchParams.get('path'), files.downloadOpts((k) => url.searchParams.get(k))));
 // Link tải dùng một lần cho app mobile: phần native tải file không có cookie đăng nhập của WebView.
 const DOWNLOAD_TICKET_MS = 60 * 1000;
 const downloadTickets = new Map(); // token -> { project, path, expires }
@@ -332,7 +332,8 @@ route('POST', '/api/projects/:p/download-ticket', async (req, res, p) => {
   const now = Date.now();
   for (const [t, v] of downloadTickets) if (v.expires < now) downloadTickets.delete(t);
   const token = crypto.randomBytes(32).toString('base64url');
-  downloadTickets.set(token, { project: p, path: typeof body.path === 'string' ? body.path : '', expires: now + DOWNLOAD_TICKET_MS });
+  const opts = files.downloadOpts((k) => (body[k] == null ? null : String(body[k])));
+  downloadTickets.set(token, { project: p, path: typeof body.path === 'string' ? body.path : '', opts, expires: now + DOWNLOAD_TICKET_MS });
   sendJson(res, 201, { url: `/api/download/${token}` });
 });
 
@@ -341,7 +342,7 @@ async function handleTicketDownload(res, token) {
   downloadTickets.delete(token);
   if (!ticket || ticket.expires < Date.now()) return sendJson(res, 404, { error: 'Link tải đã hết hạn' });
   try {
-    await files.download(res, ticket.project, ticket.path);
+    await files.download(res, ticket.project, ticket.path, ticket.opts);
   } catch (err) {
     apiError(res, err);
   }
