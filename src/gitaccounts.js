@@ -14,8 +14,8 @@ const { httpError } = projects;
 
 const SSH_DIR = path.join(os.homedir(), '.ssh');
 const SSH_CONFIG = path.join(SSH_DIR, 'config');
-const TOKENS_FILE = path.join(__dirname, '..', 'data', 'git-tokens.json');
-const LABELS_FILE = path.join(__dirname, '..', 'data', 'git-labels.json'); // alias -> tên gợi nhớ anh đặt
+const TOKENS_FILE = path.join(require('./paths').DATA_DIR, 'git-tokens.json');
+const LABELS_FILE = path.join(require('./paths').DATA_DIR, 'git-labels.json'); // alias -> tên gợi nhớ anh đặt
 const ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const HOST_RE = /^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$/;
 const GIT_HOST_RE = /github|gitlab|bitbucket|gitea|codeberg/i;

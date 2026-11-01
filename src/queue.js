@@ -9,7 +9,7 @@ const path = require('path');
 const tmux = require('./tmux');
 const { httpError } = require('./projects');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const { DATA_DIR } = require('./paths');
 const FILE = path.join(DATA_DIR, 'queues.json');
 const MAX_ITEMS = 50;
 const MAX_TEXT = 100 * 1024;

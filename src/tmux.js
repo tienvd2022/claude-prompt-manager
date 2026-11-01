@@ -33,7 +33,7 @@ const CLAUDE_ENV = 'CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN=1';
 // Mỗi mục là tên alias hoặc { name, description }. "default" là alias dùng khi bấm nút Claude thường
 // (không có thì lấy mục đầu). "configDir" (tùy chọn) là CLAUDE_CONFIG_DIR của alias, để gợi ý đúng skill khi gõ "/"
 // (không ghi thì đoán: claude-fami -> ~/.claude-fami). Đọc lại mỗi lần để sửa file không cần restart.
-const ALIASES_FILE = path.join(__dirname, '..', 'data', 'claude-aliases.json');
+const ALIASES_FILE = path.join(require('./paths').DATA_DIR, 'claude-aliases.json');
 const ALIAS_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const DEFAULT_ALIASES = [{ name: 'claude', description: '', default: true }];
 

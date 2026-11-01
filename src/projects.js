@@ -13,7 +13,7 @@ const PROJECTS_DIR = path.resolve(expandHome(process.env.PROJECTS_DIR || '~/proj
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 // Thư mục nằm ngoài PROJECTS_DIR (hoặc thư mục con) anh mở bằng "Mở thư mục": lưu { tên: đường dẫn tuyệt đối }.
-const LINKS_FILE = path.join(__dirname, '..', 'data', 'projects.json');
+const LINKS_FILE = path.join(require('./paths').DATA_DIR, 'projects.json');
 const BROWSE_MAX = 2000;
 
 function loadLinks() {
