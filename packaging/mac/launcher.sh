@@ -21,6 +21,8 @@ if [ ! -f "$CONFIG" ]; then
 # Cấu hình Claude Prompt Manager. Sửa xong thì mở app, chọn "Dừng server", rồi mở lại.
 # Thư mục chứa các dự án:
 PROJECTS_DIR=~/projects
+# Thư mục dữ liệu (mật khẩu, danh sách dự án, phiên...). Bỏ trống = dùng thư mục riêng của app. Muốn dùng chung với bản chạy từ source thì trỏ tới thư mục data của source.
+# CPM_DATA_DIR=
 # Cổng. Địa chỉ 127.0.0.1 = chỉ máy này truy cập được.
 # Muốn điện thoại cùng Wi-Fi vào được thì đổi thành 0.0.0.0 (chỉ nên dùng trong mạng tin cậy: đăng nhập đi qua HTTP không mã hóa).
 PORT=4777
@@ -30,7 +32,7 @@ EOF
 fi
 set -a; . "$CONFIG"; set +a
 PORT="${PORT:-4777}"
-export CPM_DATA_DIR="$SUPPORT/data"
+export CPM_DATA_DIR="${CPM_DATA_DIR:-$SUPPORT/data}"
 URL="http://localhost:$PORT"
 
 is_up() { curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/"; }
