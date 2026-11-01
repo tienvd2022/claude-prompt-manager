@@ -188,7 +188,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .project-list { padding: 0; gap: 6px; }
 .project-card {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   gap: 2px 8px;
   align-items: center;
   padding: 12px 14px;
@@ -201,6 +201,8 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .project-card:hover { border-color: var(--muted); }
 .project-name { font-weight: 600; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .project-meta { grid-column: 1; color: var(--muted); font-size: 12px; }
+.project-rename { grid-column: 3; grid-row: 1 / span 2; opacity: 0.6; }
+.project-rename:hover { opacity: 1; }
 .dot { grid-column: 2; grid-row: 1 / span 2; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); }
 
 /* ---------- File ---------- */

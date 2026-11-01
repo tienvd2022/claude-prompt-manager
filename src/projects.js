@@ -145,4 +145,20 @@ function create(name) {
   return { name };
 }
 
-module.exports = { PROJECTS_DIR, httpError, ensureRoot, validName, checkNewName, projectDir, list, create, open, unlink, browse };
+// Đổi tên thư mục dự án trong PROJECTS_DIR. Thư mục mở thêm (ở ngoài) thì không đổi tên trên đĩa.
+function rename(name, newName) {
+  if (!validName(name)) throw httpError(400, 'Tên dự án không hợp lệ');
+  if (loadLinks()[name]) throw httpError(400, 'Thư mục mở thêm (ngoài thư mục dự án) không đổi tên được ở đây');
+  const dir = projectDir(name);
+  if (newName === name) return { name };
+  // Chỉ khác hoa/thường: kiểm tra trùng trừ chính nó (hệ file không phân biệt hoa thường).
+  if (newName.toLowerCase() === name.toLowerCase()) {
+    if (!validName(newName)) throw httpError(400, 'Tên dự án chỉ gồm chữ, số, ".", "-", "_" (tối đa 64 ký tự)');
+  } else {
+    checkNewName(newName);
+  }
+  fs.renameSync(dir, path.join(PROJECTS_DIR, newName));
+  return { name: newName };
+}
+
+module.exports = { PROJECTS_DIR, httpError, ensureRoot, validName, checkNewName, projectDir, list, create, open, unlink, rename, browse };
