@@ -11,7 +11,8 @@
     "android:apk": "cd android && ./gradlew assembleRelease",
     "android:keystore": "bash scripts/android-keystore.sh",
     "ios:pods": "cd ios && pod install",
-    "ios:release": "react-native run-ios --mode Release"
+    "ios:release": "react-native run-ios --mode Release",
+    "mac:build": "bash scripts/build-mac.sh"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^3.1.1",

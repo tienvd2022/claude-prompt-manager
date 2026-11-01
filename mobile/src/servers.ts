@@ -1,4 +1,50 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
+import ReactNativeBlobUtil from 'react-native-blob-util';
+
+// Bản Mac (Mac Catalyst) không có native module AsyncStorage (xem ios/Podfile): lưu vào một file JSON.
+type KV = {
+  getItem(k: string): Promise<string | null>;
+  setItem(k: string, v: string): Promise<void>;
+  removeItem(k: string): Promise<void>;
+};
+
+function fileStore(): KV {
+  // Không sandbox nên LibraryDir là ~/Library: để trong Application Support, không bày ra ~/Documents.
+  const dir = `${ReactNativeBlobUtil.fs.dirs.LibraryDir}/Application Support/vn.nhanhnhau.cpm`;
+  const path = `${dir}/settings.json`;
+  let cache: Record<string, string> | null = null;
+  const read = async () => {
+    if (cache) return cache;
+    try {
+      cache = (await ReactNativeBlobUtil.fs.exists(path)) ? JSON.parse(await ReactNativeBlobUtil.fs.readFile(path, 'utf8')) : {};
+    } catch {
+      cache = {};
+    }
+    return cache!;
+  };
+  const write = async (data: Record<string, string>) => {
+    if (!(await ReactNativeBlobUtil.fs.isDir(dir))) await ReactNativeBlobUtil.fs.mkdir(dir).catch(() => {});
+    await ReactNativeBlobUtil.fs.writeFile(path, JSON.stringify(data), 'utf8');
+  };
+  return {
+    getItem: async (k) => (await read())[k] ?? null,
+    setItem: async (k, v) => {
+      const data = { ...(await read()), [k]: v };
+      await write(data);
+      cache = data;
+    },
+    removeItem: async (k) => {
+      const data = { ...(await read()) };
+      delete data[k];
+      await write(data);
+      cache = data;
+    },
+  };
+}
+
+const AsyncStorage: KV = Platform.OS === 'ios' && Platform.isMacCatalyst
+  ? fileStore()
+  : require('@react-native-async-storage/async-storage').default;
 
 export type Server = { url: string; name: string };
 

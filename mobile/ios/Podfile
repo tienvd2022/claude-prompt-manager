@@ -31,8 +31,39 @@ target 'CPMMobile' do
     react_native_post_install(
       installer,
       config[:reactNativePath],
-      :mac_catalyst_enabled => false,
+      :mac_catalyst_enabled => true,
       # :ccache_enabled => true
     )
+
+    # AsyncStorage v3 dùng SharedAsyncStorage.xcframework không có bản Mac Catalyst: bản Mac
+    # build thư viện rỗng, không link framework đó; JS (src/servers.ts) lưu bằng file thay thế.
+    fix_script = File.expand_path('../scripts/fix-catalyst-frameworks.sh', __dir__)
+    system('bash', fix_script) || raise('fix-catalyst-frameworks.sh lỗi')
+    # Script "Replace ... for the right configuration" giải nén lại framework khi đổi Debug/Release
+    # (làm mất phần sửa ở trên) nên chạy sửa lại ngay sau nó.
+    installer.pods_project.targets.each do |t|
+      t.shell_script_build_phases.each do |ph|
+        next unless ph.name =~ /\[(RNCore|RNDeps)\] Replace/
+        next if ph.shell_script.include?('fix-catalyst-frameworks')
+        ph.shell_script += "\nbash \"#{fix_script}\" \"${PODS_ROOT}\"\n"
+      end
+    end
+
+    installer.pods_project.targets.each do |t|
+      next unless t.name == 'AsyncStorage'
+      t.build_configurations.each { |c| c.build_settings['EXCLUDED_SOURCE_FILE_NAMES[sdk=macosx*]'] = '*' }
+    end
+    installer.aggregate_targets.each do |agg|
+      agg.xcconfigs.each do |cfg_name, xc|
+        path = agg.xcconfig_path(cfg_name)
+        flags = xc.other_linker_flags
+        text = File.read(path)
+        line = text[/^OTHER_LDFLAGS = .*$/]
+        next unless line
+        mac = line.sub('OTHER_LDFLAGS =', 'OTHER_LDFLAGS[sdk=macosx*] =').gsub(' -l"AsyncStorage"', '').gsub(' -framework "SharedAsyncStorage"', '')
+          .sub(' $(inherited)', '') # $(inherited) ở đây kéo lại dòng gốc (có -lAsyncStorage)
+        File.write(path, text.sub(line, "#{line}\n#{mac}"))
+      end
+    end
   end
 end
