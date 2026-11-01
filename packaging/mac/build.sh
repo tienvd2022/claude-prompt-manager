@@ -1,14 +1,15 @@
 #!/bin/bash
-# Đóng gói "Claude Prompt Manager.app" (macOS). Chạy: bash packaging/mac/build.sh
-# Kết quả: dist/Claude Prompt Manager.app, kèm sẵn Node và node_modules (build cho kiến trúc máy đang build).
+# Đóng gói "CPM-server.app" (macOS). Chạy: bash packaging/mac/build.sh
+# Kết quả: dist/CPM-server.app, kèm sẵn Node và node_modules (build cho kiến trúc máy đang build).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-APP="$ROOT/dist/Claude Prompt Manager.app"
+APP="$ROOT/dist/CPM-server.app"
 NODE_BIN="$(readlink -f "$(command -v node)")"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/app"
-cp "$ROOT/packaging/mac/launcher.sh" "$APP/Contents/MacOS/launcher"
+cp "$ROOT/packaging/mac/ctl.sh" "$APP/Contents/Resources/ctl.sh"
+swiftc -O -o "$APP/Contents/MacOS/CPM-server" "$ROOT/packaging/mac/CPMServer.swift"
 cp "$ROOT/packaging/mac/open-computer-use.sh" "$APP/Contents/Resources/open-computer-use.sh"
 cp "$NODE_BIN" "$APP/Contents/Resources/node"
 
@@ -31,10 +32,10 @@ cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleName</key><string>Claude Prompt Manager</string>
-<key>CFBundleDisplayName</key><string>Claude Prompt Manager</string>
+<key>CFBundleName</key><string>CPM-server</string>
+<key>CFBundleDisplayName</key><string>CPM-server</string>
 <key>CFBundleIdentifier</key><string>vn.nhanhnhau.claude-prompt-manager</string>
-<key>CFBundleExecutable</key><string>launcher</string>
+<key>CFBundleExecutable</key><string>CPM-server</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleVersion</key><string>$VERSION</string>
