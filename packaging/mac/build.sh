@@ -9,6 +9,7 @@ NODE_BIN="$(readlink -f "$(command -v node)")"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources/app"
 cp "$ROOT/packaging/mac/launcher.sh" "$APP/Contents/MacOS/launcher"
+cp "$ROOT/packaging/mac/open-computer-use.sh" "$APP/Contents/Resources/open-computer-use.sh"
 cp "$NODE_BIN" "$APP/Contents/Resources/node"
 
 cd "$ROOT"

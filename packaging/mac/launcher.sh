@@ -37,11 +37,6 @@ is_up() { curl -s -o /dev/null --max-time 2 "http://127.0.0.1:$PORT/"; }
 stop_server() {
   if [ -f "$PIDFILE" ]; then kill "$(cat "$PIDFILE")" 2>/dev/null; rm -f "$PIDFILE"; fi
 }
-open_cu() {
-  for d in "$HOME/Applications" /Applications; do
-    [ -d "$d/ClaudeComputerUse.app" ] && { pgrep -x ClaudeComputerUse >/dev/null || open -g "$d/ClaudeComputerUse.app"; return; }
-  done
-}
 
 start_server() {
   command -v tmux >/dev/null || { say "Máy chưa có tmux. Mở Terminal gõ: brew install tmux (chưa có brew thì cài từ brew.sh), rồi mở lại app."; exit 1; }
@@ -65,7 +60,6 @@ start_server() {
 
 if [ "$BACKGROUND" = 1 ]; then
   is_up || start_server
-  open_cu
   exit 0
 fi
 
@@ -94,5 +88,4 @@ EOF
 fi
 
 start_server
-open_cu
 open "$URL"
