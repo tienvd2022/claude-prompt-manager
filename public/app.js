@@ -784,7 +784,23 @@ function openTab(name) {
   terminalsEl.append(elTerm);
   const { term, fit } = makeTerminal();
   term.open(elTerm);
-  if (isTouch) {
+  // Nút "Xuống cuối": hiện khi đã cuộn lên khỏi dòng mới nhất.
+  const jump = el('button', { type: 'button', class: 'term-jump', hidden: true, title: 'Xuống cuối', 'aria-label': 'Xuống cuối', text: '↓ Xuống cuối', onclick: () => { term.scrollToBottom(); if (!isTouch) term.focus(); } });
+  jump.addEventListener('mousedown', (e) => e.preventDefault());
+  elTerm.append(jump);
+  const syncJump = () => { const b = term.buffer.active; jump.hidden = b.viewportY >= b.baseY; };
+  term.onScroll(syncJump);
+  term.onWriteParsed(syncJump);
+  // Cmd+C (Mac) / Ctrl+C hoặc Ctrl+Shift+C (máy khác) khi đang bôi đen thì copy luôn, không gửi ^C vào phiên.
+  // Không dựa vào sự kiện copy của trình duyệt vì vùng chọn của xterm không phải vùng chọn của trang (WebView hay mất).
+  term.attachCustomKeyEventHandler((e) => {
+    if (e.type !== 'keydown' || e.code !== 'KeyC' || e.altKey || !term.getSelection()) return true;
+    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+    if (!(mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey)) return true;
+    copyText(term.getSelection()).then((ok) => toast(ok ? 'Đã copy' : 'Trình duyệt chặn copy, mở 📄 để copy', ok ? undefined : 'error'));
+    return false;
+  });
+  if (isTouch || navigator.maxTouchPoints > 0) {
     attachTouch(term, elTerm, {
       onCopy: async (text) => {
         const ok = await copyText(text);
