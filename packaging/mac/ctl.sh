@@ -1,15 +1,16 @@
 #!/bin/bash
-# Launcher của "Claude Prompt Manager.app": double-click là chạy server nền rồi mở trình duyệt.
-# Tham số --background: chỉ bảo đảm server đang chạy, không mở trình duyệt/hộp thoại (dùng cho tự chạy khi mở máy).
+# Script điều khiển server của CPM-server.app (app thanh menu gọi: start | start-bg | stop | status | url | autostart | autostart-on | autostart-off).
+# start-bg: không hiện hộp thoại (dùng khi tự chạy lúc mở máy).
 
-RES="$(cd "$(dirname "$0")/../Resources" && pwd)"
+RES="$(cd "$(dirname "$0")" && pwd)"
 SUPPORT="$HOME/Library/Application Support/Claude Prompt Manager"
 CONFIG="$SUPPORT/config.env"
 LOG="$SUPPORT/server.log"
 PIDFILE="$SUPPORT/server.pid"
 AGENT_LABEL="vn.nhanhnhau.claude-prompt-manager"
 AGENT="$HOME/Library/LaunchAgents/$AGENT_LABEL.plist"
-BACKGROUND=0; [ "$1" = "--background" ] && BACKGROUND=1
+CMD="${1:-start}"
+BACKGROUND=0; [ "$CMD" = "start-bg" ] && BACKGROUND=1
 
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 mkdir -p "$SUPPORT"
@@ -60,34 +61,30 @@ start_server() {
   exit 1
 }
 
-if [ "$BACKGROUND" = 1 ]; then
-  is_up || start_server
-  exit 0
-fi
-
-if is_up; then
-  login_label="Bật tự chạy khi mở máy"; [ -f "$AGENT" ] && login_label="Tắt tự chạy khi mở máy"
-  choice=$(osascript -e "button returned of (display dialog \"Server đang chạy tại $URL\" with title \"Claude Prompt Manager\" buttons {\"Dừng server\", \"$login_label\", \"Mở trình duyệt\"} default button 3)" 2>/dev/null) || exit 0
-  case "$choice" in
-    "Dừng server") stop_server; exit 0 ;;
-    "Bật tự chạy"*)
-      mkdir -p "$HOME/Library/LaunchAgents"
-      APP_EXEC="$RES/../MacOS/launcher"
-      cat > "$AGENT" <<EOF
+autostart_on() {
+  mkdir -p "$HOME/Library/LaunchAgents"
+  cat > "$AGENT" <<EOF2
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>$AGENT_LABEL</string>
-<key>ProgramArguments</key><array><string>$APP_EXEC</string><string>--background</string></array>
+<key>ProgramArguments</key><array><string>$RES/../MacOS/CPM-server</string><string>--background</string></array>
 <key>RunAtLoad</key><true/>
 </dict></plist>
-EOF
-      launchctl bootstrap "gui/$(id -u)" "$AGENT" 2>/dev/null
-      say "Đã bật. Từ lần đăng nhập máy sau, server tự chạy. Đừng di chuyển file .app sang chỗ khác nếu không sẽ phải bật lại." ;;
-    "Tắt tự chạy"*) launchctl bootout "gui/$(id -u)" "$AGENT" 2>/dev/null; rm -f "$AGENT" ;;
-  esac
-  open "$URL"; exit 0
-fi
+EOF2
+  launchctl bootout "gui/$(id -u)" "$AGENT" 2>/dev/null
+  launchctl bootstrap "gui/$(id -u)" "$AGENT" 2>/dev/null
+}
+autostart_off() { launchctl bootout "gui/$(id -u)" "$AGENT" 2>/dev/null; rm -f "$AGENT"; }
 
-start_server
-open "$URL"
+# Lệnh do app thanh menu (CPM-server) gọi
+case "$CMD" in
+  start)      is_up || start_server ;;
+  start-bg)   is_up || start_server ;;
+  stop)       stop_server ;;
+  status)     is_up && echo up || echo down ;;
+  url)        echo "$URL" ;;
+  autostart)  [ -f "$AGENT" ] && echo on || echo off ;;
+  autostart-on)  autostart_on ;;
+  autostart-off) autostart_off ;;
+esac
