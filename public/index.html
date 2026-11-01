@@ -16,6 +16,7 @@
       <header class="topbar">
         <strong class="brand">Dự án</strong>
         <span class="spacer"></span>
+        <button id="btn-shortcuts-list" class="icon-btn btn-shortcuts" title="Phím tắt" aria-label="Phím tắt">⌨</button>
         <button id="btn-git-settings" class="icon-btn" title="Cài đặt Git (tài khoản SSH, tên commit)" aria-label="Cài đặt Git">⚙</button>
         <button class="icon-btn btn-switch-server" title="Đổi server" aria-label="Đổi server" hidden>⇄</button>
         <button class="icon-btn btn-logout" title="Đăng xuất" aria-label="Đăng xuất"><span class="ico ico-power"></span></button>
@@ -36,9 +37,12 @@
       <header class="topbar">
         <button id="btn-back" class="icon-btn" title="Về danh sách dự án" aria-label="Về danh sách dự án">←</button>
         <button id="btn-sidebar" class="icon-btn" title="Phiên, File, Git" aria-label="Phiên, File, Git">☰</button>
+        <button id="btn-projswitch" class="icon-btn" title="Chuyển nhanh sang dự án đang chạy (chấm xanh)" aria-label="Chuyển dự án đang chạy"><span class="dot"></span><span class="ps-caret">▾</span></button>
         <strong id="project-title" class="project-title"></strong>
+        <ul id="projswitch-menu" class="projswitch-menu" hidden></ul>
         <nav id="tabs" class="tabs" aria-label="Tab đang mở"></nav>
         <button id="btn-new" class="primary-btn" title="Mở phiên mới">＋</button>
+        <button class="icon-btn btn-shortcuts hide-narrow" title="Phím tắt" aria-label="Phím tắt">⌨</button>
         <button class="icon-btn btn-logout hide-narrow" title="Đăng xuất" aria-label="Đăng xuất"><span class="ico ico-power"></span></button>
       </header>
       <div id="statbar" class="statbar" aria-label="Tài nguyên server"></div>
@@ -413,6 +417,30 @@
       <input id="sk-note" type="text" placeholder="Mô tả kèm hình vẽ (tùy chọn)">
       <button type="button" id="sk-send" class="primary-btn">Gửi kèm prompt</button>
     </div>
+  </dialog>
+
+  <dialog id="dlg-shortcuts" class="dlg-wide dlg-shortcuts">
+    <form method="dialog">
+      <div class="view-head">
+        <h2 class="ellipsis">Phím tắt</h2>
+        <button value="close" class="icon-btn" aria-label="Đóng">✕</button>
+      </div>
+      <p class="muted small">Bấm vào ô phím rồi nhấn tổ hợp mới (⌫ bỏ phím, Esc hủy). Lưu ở <code>data/settings.json</code> trên server, dùng chung mọi thiết bị. Trong file, <code>Mod</code> là ⌘ trên Mac và Ctrl trên máy khác; một hành động gán được nhiều phím bằng mảng, <code>[]</code> là tắt.</p>
+      <div id="sc-list" class="sc-list"></div>
+      <details class="sc-json">
+        <summary>Sửa settings.json</summary>
+        <textarea id="sc-json" rows="12" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off"></textarea>
+        <button type="button" id="sc-apply">Áp dụng</button>
+      </details>
+      <p id="sc-error" class="error" role="alert"></p>
+      <input id="sc-file" type="file" accept=".json,application/json" hidden>
+      <div class="dlg-actions">
+        <button type="button" id="sc-reset" class="danger-btn push-left">Mặc định hết</button>
+        <button type="button" id="sc-import">Import</button>
+        <button type="button" id="sc-export">Export</button>
+        <button value="close" class="primary-btn">Xong</button>
+      </div>
+    </form>
   </dialog>
 
   <dialog id="dlg-keybar">

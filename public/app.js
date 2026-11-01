@@ -11,6 +11,7 @@ import { initSlash } from './slash.js';
 import { renderAnsi } from './ansi.js';
 import { initGit, setGitProject, setAutoSyncDefault, load as loadGit } from './gitpanel.js';
 import { openBrowser } from './browserview.js';
+import { initShortcuts, openShortcuts, shortcutLabel } from './shortcuts.js';
 import { accounts as gitAccounts, checkAccount, aliasUrl, urlHost, fillAccountSelect, whoText, renderAccounts, initGitAccounts } from './gitaccounts.js';
 
 const viewProjects = $('#view-projects');
@@ -1255,10 +1256,19 @@ dlgQueue.addEventListener('close', () => { queueOf = null; });
 const promptForm = $('#prompt-form');
 const promptInput = $('#prompt-input');
 
+// Không đụng vào style.height khi đang gõ IME (Telex/VNI trên macOS): reset height='auto' giữa lúc có chữ gạch chân
+// làm WebKit mất vùng soạn thảo và nhảy con trỏ về đầu. Gõ xong (compositionend) mới co giãn.
+let composing = false;
 function autoGrow() {
+  if (composing) return;
   promptInput.style.height = 'auto';
   promptInput.style.height = `${Math.min(promptInput.scrollHeight, 160)}px`;
 }
+promptInput.addEventListener('compositionstart', () => { composing = true; });
+promptInput.addEventListener('compositionend', () => {
+  composing = false;
+  autoGrow();
+});
 
 // Bản nháp ô prompt riêng từng phiên, giữ trong sessionStorage: đổi tab phiên là đổi luôn nội dung ô prompt.
 const draftKey = (name) => `cpm.draft.${name}`;
@@ -1305,12 +1315,6 @@ function setPrompt(text) {
 promptInput.addEventListener('input', () => {
   autoGrow();
   saveDraft();
-});
-promptInput.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-    e.preventDefault();
-    promptForm.requestSubmit();
-  }
 });
 
 promptForm.addEventListener('submit', (e) => {
@@ -1413,6 +1417,127 @@ document.addEventListener('pointerdown', (e) => {
 });
 if (isTouch) promptInput.placeholder = 'Gõ prompt… (gõ / để chọn lệnh)';
 
+// ---------- Phím tắt (shortcuts.js; phím đổi được ở ⌨ hoặc data/settings.json) ----------
+
+const PANELS = ['sessions', 'files', 'git'];
+
+// Đưa focus vào danh sách của panel đang mở (mục đang chọn nếu có, không thì mục đầu).
+function focusPanel(retry = true) {
+  if (!document.body.classList.contains('sidebar-open')) toggleSidebar(true);
+  const root = $(`#panel-${panel}`);
+  const rows = panelRows(root);
+  // File/Git tải danh sách bất đồng bộ: chưa có dòng nào thì thử lại một lần sau khi tải xong.
+  if (!rows.length && retry) setTimeout(() => { if (!root.contains(document.activeElement)) focusPanel(false); }, 500);
+  const target = rows.find((b) => b.closest('li')?.classList.contains('active')) || rows[0]
+    || [...root.querySelectorAll('button:not([disabled]), input, textarea, a')].find((n) => n.offsetParent);
+  target?.focus();
+}
+
+// Mỗi dòng (li) của panel -> nút chính của dòng đó.
+function panelRows(root) {
+  return [...root.querySelectorAll('li')]
+    .map((li) => li.querySelector('button:not([disabled]), a'))
+    .filter((b) => b && b.offsetParent);
+}
+
+function goPanel(delta, name) {
+  const next = name || PANELS[(PANELS.indexOf(panel) + delta + PANELS.length) % PANELS.length];
+  showPanel(next);
+  focusPanel();
+}
+
+// Mũi tên lên/xuống đi qua các dòng trong sidebar (Phiên, File, Git); Enter/Space mở như bấm chuột.
+$('#sidebar').addEventListener('keydown', (e) => {
+  if ((e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  const li = e.target.closest?.('li');
+  if (!li) return;
+  const rows = panelRows($(`#panel-${panel}`));
+  const i = rows.findIndex((b) => b.closest('li') === li);
+  const to = rows[i + (e.key === 'ArrowDown' ? 1 : -1)];
+  if (i < 0 || !to) return;
+  e.preventDefault();
+  to.focus();
+});
+
+const tabNames = () => [...tabs.keys()];
+const goTab = (i) => {
+  const name = tabNames()[i];
+  if (!name) return false;
+  activate(name);
+};
+const projectCards = () => [...document.querySelectorAll('#project-list .project-card')];
+const openCard = (card) => {
+  if (!card) return false;
+  location.hash = card.getAttribute('href');
+};
+
+const shortcutActions = {
+  'shortcuts.edit': () => openShortcuts(),
+
+  'tab.next': () => tabNames().length > 1 && goTab((tabNames().indexOf(active) + 1) % tabs.size),
+  'tab.prev': () => tabNames().length > 1 && goTab((tabNames().indexOf(active) - 1 + tabs.size) % tabs.size),
+  'tab.close': () => (active ? closeTab(active) : false),
+  'session.new': () => $('#btn-new').click(),
+  'terminal.focus': () => tabs.get(active)?.term.focus(),
+  'preview.toggle': () => togglePreview(),
+  'project.back': () => { location.hash = '#/'; },
+
+  'sidebar.toggle': () => toggleSidebar(),
+  'sidebar.focus': () => focusPanel(),
+  'panel.sessions': () => goPanel(0, 'sessions'),
+  'panel.files': () => goPanel(0, 'files'),
+  'panel.git': () => goPanel(0, 'git'),
+  'panel.next': () => goPanel(1),
+  'panel.prev': () => goPanel(-1),
+
+  'prompt.focus': () => promptInput.focus(),
+  'prompt.send': () => promptForm.requestSubmit(),
+  'prompt.queue': () => $('#prompt-queue').click(),
+  'queue.show': () => showQueue(),
+  'history.show': () => showHistory(),
+
+  'projects.filter': () => {
+    const f = $('#project-filter');
+    f.focus();
+    f.select();
+  },
+  'projects.next': () => {
+    const cards = projectCards();
+    if (!cards.length) return false;
+    cards[Math.min(cards.indexOf(document.activeElement) + 1, cards.length - 1)].focus();
+  },
+  'projects.prev': () => {
+    const cards = projectCards();
+    const i = cards.indexOf(document.activeElement);
+    if (i < 0) return false;
+    if (i === 0) $('#project-filter').focus();
+    else cards[i - 1].focus();
+  },
+  // Enter ở ô tìm (hoặc chưa focus gì) mở dự án đầu danh sách; đang ở một thẻ thì để Enter mở thẻ đó.
+  'projects.open': () => {
+    const t = document.activeElement;
+    if (t !== $('#project-filter') && t !== document.body) return false;
+    return openCard(projectCards()[0]);
+  },
+  'projects.new': () => $('#btn-new-project').click(),
+  'projects.folder': () => $('#btn-open-folder').click(),
+};
+for (let n = 1; n <= 9; n++) {
+  shortcutActions[`tab.${n}`] = () => goTab(n - 1);
+  shortcutActions[`projects.open.${n}`] = () => openCard(projectCards()[n - 1]);
+}
+
+document.querySelectorAll('.btn-shortcuts').forEach((b) => b.addEventListener('click', openShortcuts));
+
+function applyShortcutHints() {
+  const send = shortcutLabel('prompt.send');
+  promptInput.placeholder = isTouch
+    ? 'Gõ prompt… (gõ / để chọn lệnh)'
+    : `Gõ prompt… (dán ảnh được${send ? `, ${send} để gửi` : ''})`;
+  $('#prompt-queue').title = `Thêm vào hàng đợi (tự gửi khi Claude xong)${shortcutLabel('prompt.queue') ? ` · ${shortcutLabel('prompt.queue')}` : ''}`;
+}
+
+
 // ---------- Bố cục ----------
 
 function toggleSidebar(force) {
@@ -1427,6 +1552,36 @@ document.addEventListener('pointerdown', (e) => {
   if (e.target.closest('#sidebar, #btn-sidebar, dialog')) return;
   toggleSidebar(false);
 });
+// Chuyển nhanh giữa các dự án đang có phiên chạy (chấm xanh) ngay trong màn làm việc.
+const psBtn = $('#btn-projswitch');
+const psMenu = $('#projswitch-menu');
+const closeProjSwitch = () => { psMenu.hidden = true; };
+psBtn.addEventListener('click', async (e) => {
+  e.stopPropagation();
+  if (!psMenu.hidden) return closeProjSwitch();
+  psMenu.replaceChildren(el('li', { class: 'muted pad small', text: 'Đang tải…' }));
+  psMenu.hidden = false;
+  let list;
+  try {
+    list = (await api('GET', '/api/projects')).projects;
+  } catch (err) {
+    closeProjSwitch();
+    return toast(err.message, 'error');
+  }
+  const recent = store.get('cpm.recent', {});
+  const live = list.filter((p) => p.sessions).sort((a, b) => (recent[b.name] || 0) - (recent[a.name] || 0));
+  psMenu.replaceChildren(...(live.length
+    ? live.map((p) => el('li', {}, el('button', {
+      type: 'button',
+      class: p.name === project ? 'active' : '',
+      onclick: () => { closeProjSwitch(); if (p.name !== project) location.hash = `#/p/${encodeURIComponent(p.name)}`; },
+    }, el('span', { class: 'dot' }), el('span', { class: 'ellipsis', text: p.name }), el('span', { class: 'muted small', text: `${p.sessions} phiên` }))))
+    : [el('li', { class: 'muted pad small', text: 'Chưa có dự án nào đang chạy.' })]));
+});
+document.addEventListener('click', (e) => { if (!psMenu.contains(e.target)) closeProjSwitch(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeProjSwitch(); });
+window.addEventListener('hashchange', closeProjSwitch);
+
 $('#btn-back').addEventListener('click', () => { location.hash = '#/'; });
 $('#btn-refresh').addEventListener('click', refreshSessions);
 document.querySelectorAll('.btn-logout').forEach((btn) => btn.addEventListener('click', async () => {
@@ -1499,4 +1654,9 @@ initGit({
   },
 });
 fitViewport();
+initShortcuts({
+  actions: shortcutActions,
+  view: () => (viewWorkspace.hidden ? 'projects' : 'workspace'),
+  onChange: applyShortcutHints,
+});
 route();
