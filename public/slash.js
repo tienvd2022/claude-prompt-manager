@@ -119,7 +119,8 @@ function choose(i) {
 }
 
 function onKey(e) {
-  if (!open || e.isComposing) return;
+  // Safari báo Enter dùng để chốt chữ IME là keydown thường (isComposing=false, keyCode 229): đừng coi là chọn lệnh.
+  if (!open || e.isComposing || (e.key === 'Enter' && e.keyCode === 229)) return;
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     index = (index + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
     render();
